@@ -40,65 +40,65 @@
  *         "<0x7000000000000001:0>" "<0x7200000000000001:64>" 12345670
  */
 
-#include "motr/client.h"
+#include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
-#include <assert.h>
 
-#define N_REQUEST     10000
-#define BLOCK_SIZE    1048576    // 4096, 8192
+#include "motr/client.h"
 
-static struct m0_client         *m0_instance = NULL;
-static struct m0_container       motr_container;
-static struct m0_config          motr_conf;
-static struct m0_idx_dix_config  motr_dix_conf;
+#define N_REQUEST 20000     // number of request will be sent by this client
+#define BLOCK_SIZE 4194304  // 4096, 8192
 
-struct m0_uint128                obj_id = { 0, 0 };
+static struct m0_client *m0_instance = NULL;
+static struct m0_container motr_container;
+static struct m0_config motr_conf;
+static struct m0_idx_dix_config motr_dix_conf;
+
+struct m0_uint128 obj_id = {0, 0};
 
 int LAYOUT_ID = -1;
 
 /* return ideal block size */
-static int get_layout_id(int blk_size){
-  assert(blk_size != -1);
-  if (blk_size == 4096)
-    return 1; 
-  else if (blk_size == 8192) 
-    return 2; 
-  else if (blk_size == 16384) 
-    return 3; 
-  else if (blk_size == 32768)
-    return 4; 
-  else if (blk_size == 65536) //  64KB
-    return 5; 
-  else if (blk_size == 131072) //  128KB
-    return 6; 
-  else if (blk_size == 262144) //  256KB
-    return 7; 
-  else if (blk_size == 524288) //  512KB
-    return 8; 
-  else if (blk_size == 1048576) //  1MB
-    return 9; 
-  else if (blk_size == 2097152) //  2M1B
-    return 10; 
-  else if (blk_size == 4194304) //  4M1B
-    return 11; 
-  else if (blk_size == 8388608) //  8M1B
-    return 12; 
-  else if (blk_size == 16777216) //  16M1B
-    return 13; 
-  else 
-    printf("ERROR: block size (%d) is too big!\n", blk_size);
+static int get_layout_id(int blk_size) {
+    assert(blk_size != -1);
+    if (blk_size == 4096)
+        return 1;
+    else if (blk_size == 8192)
+        return 2;
+    else if (blk_size == 16384)
+        return 3;
+    else if (blk_size == 32768)
+        return 4;
+    else if (blk_size == 65536)  //  64KB
+        return 5;
+    else if (blk_size == 131072)  //  128KB
+        return 6;
+    else if (blk_size == 262144)  //  256KB
+        return 7;
+    else if (blk_size == 524288)  //  512KB
+        return 8;
+    else if (blk_size == 1048576)  //  1MB
+        return 9;
+    else if (blk_size == 2097152)  //  2M1B
+        return 10;
+    else if (blk_size == 4194304)  //  4M1B
+        return 11;
+    else if (blk_size == 8388608)  //  8M1B
+        return 12;
+    else if (blk_size == 16777216)  //  16M1B
+        return 13;
+    else
+        printf("ERROR: block size (%d) is too big!\n", blk_size);
     exit(-1);
     return -1;
 }
 
-static int object_create(struct m0_container *container)
-{
-    struct m0_obj     obj;
+static int object_create(struct m0_container *container) {
+    struct m0_obj obj;
     struct m0_client *instance;
-    struct m0_op     *ops[1] = {NULL};
-    int               rc;
+    struct m0_op *ops[1] = {NULL};
+    int rc;
 
     M0_SET0(&obj);
     instance = container->co_realm.re_instance;
@@ -111,11 +111,8 @@ static int object_create(struct m0_container *container)
     }
 
     m0_op_launch(ops, 1);
-    rc = m0_op_wait(ops[0],
-            M0_BITS(M0_OS_FAILED, M0_OS_STABLE),
-            M0_TIME_NEVER);
-    if (rc == 0)
-        rc = ops[0]->op_rc;
+    rc = m0_op_wait(ops[0], M0_BITS(M0_OS_FAILED, M0_OS_STABLE), M0_TIME_NEVER);
+    if (rc == 0) rc = ops[0]->op_rc;
 
     m0_op_fini(ops[0]);
     m0_op_free(ops[0]);
@@ -128,10 +125,9 @@ static int object_create(struct m0_container *container)
     return rc;
 }
 
-static int object_open(struct m0_obj *obj)
-{
+static int object_open(struct m0_obj *obj) {
     struct m0_op *ops[1] = {NULL};
-    int           rc;
+    int rc;
 
     rc = m0_entity_open(&obj->ob_entity, &ops[0]);
     if (rc != 0) {
@@ -140,11 +136,8 @@ static int object_open(struct m0_obj *obj)
     }
 
     m0_op_launch(ops, 1);
-    rc = m0_op_wait(ops[0],
-            M0_BITS(M0_OS_FAILED, M0_OS_STABLE),
-            M0_TIME_NEVER);
-    if (rc == 0)
-        rc = ops[0]->op_rc;
+    rc = m0_op_wait(ops[0], M0_BITS(M0_OS_FAILED, M0_OS_STABLE), M0_TIME_NEVER);
+    if (rc == 0) rc = ops[0]->op_rc;
 
     m0_op_fini(ops[0]);
     m0_op_free(ops[0]);
@@ -156,17 +149,13 @@ static int object_open(struct m0_obj *obj)
     return rc;
 }
 
-static int alloc_vecs(struct m0_indexvec *ext,
-              struct m0_bufvec   *data,
-              struct m0_bufvec   *attr,
-              uint32_t            block_count,
-              uint32_t            block_size)
-{
-    int      rc;
+static int alloc_vecs(struct m0_indexvec *ext, struct m0_bufvec *data,
+                      struct m0_bufvec *attr, uint32_t block_count,
+                      uint32_t block_size) {
+    int rc;
 
     rc = m0_indexvec_alloc(ext, block_count);
-    if (rc != 0)
-        return rc;
+    if (rc != 0) return rc;
 
     /*
      * this allocates <block_count> * <block_size>  buffers for data,
@@ -187,20 +176,16 @@ static int alloc_vecs(struct m0_indexvec *ext,
     return rc;
 }
 
-static void prepare_ext_vecs(struct m0_indexvec *ext,
-                 struct m0_bufvec   *data,
-                 struct m0_bufvec   *attr,
-                 uint32_t            block_count,
-                 uint32_t            block_size,
-                 uint64_t           *last_index,
-                 char                c)
-{
-    int      i;
+static void prepare_ext_vecs(struct m0_indexvec *ext, struct m0_bufvec *data,
+                             struct m0_bufvec *attr, uint32_t block_count,
+                             uint32_t block_size, uint64_t *last_index,
+                             char c) {
+    int i;
 
     for (i = 0; i < block_count; ++i) {
-        ext->iv_index[i]       = *last_index;
+        ext->iv_index[i] = *last_index;
         ext->iv_vec.v_count[i] = block_size;
-        *last_index           += block_size;
+        *last_index += block_size;
 
         /* Fill the buffer with all `c`. */
         memset(data->ov_buf[i], c, data->ov_vec.v_count[i]);
@@ -209,23 +194,19 @@ static void prepare_ext_vecs(struct m0_indexvec *ext,
     }
 }
 
-static void cleanup_vecs(struct m0_indexvec *ext,
-             struct m0_bufvec   *data,
-             struct m0_bufvec   *attr)
-{
+static void cleanup_vecs(struct m0_indexvec *ext, struct m0_bufvec *data,
+                         struct m0_bufvec *attr) {
     /* Free bufvec's and indexvec's */
     m0_indexvec_free(ext);
     m0_bufvec_free(data);
     m0_bufvec_free(attr);
 }
 
-static int write_data_to_object(struct m0_obj      *obj,
-                struct m0_indexvec *ext,
-                struct m0_bufvec   *data,
-                struct m0_bufvec   *attr)
-{
-    int          rc;
-    struct m0_op *ops[1] = { NULL };
+static int write_data_to_object(struct m0_obj *obj, struct m0_indexvec *ext,
+                                struct m0_bufvec *data,
+                                struct m0_bufvec *attr) {
+    int rc;
+    struct m0_op *ops[1] = {NULL};
 
     /* Create the write request */
     m0_obj_op(obj, M0_OC_WRITE, ext, data, attr, 0, 0, &ops[0]);
@@ -238,11 +219,8 @@ static int write_data_to_object(struct m0_obj      *obj,
     m0_op_launch(ops, 1);
 
     /* wait */
-    rc = m0_op_wait(ops[0],
-            M0_BITS(M0_OS_FAILED,
-                M0_OS_STABLE),
-            M0_TIME_NEVER);
-    rc = rc ? : ops[0]->op_sm.sm_rc;
+    rc = m0_op_wait(ops[0], M0_BITS(M0_OS_FAILED, M0_OS_STABLE), M0_TIME_NEVER);
+    rc = rc ?: ops[0]->op_sm.sm_rc;
 
     /* fini and release the ops */
     m0_op_fini(ops[0]);
@@ -251,17 +229,16 @@ static int write_data_to_object(struct m0_obj      *obj,
     return rc;
 }
 
-static int object_write(struct m0_container *container)
-{
-    struct m0_obj      obj;
-    struct m0_client  *instance;
-    int                rc;
+static int object_write(struct m0_container *container) {
+    struct m0_obj obj;
+    struct m0_client *instance;
+    int rc;
 
-        struct m0_indexvec ext;
-        struct m0_bufvec   data;
-        struct m0_bufvec   attr;
+    struct m0_indexvec ext;
+    struct m0_bufvec data;
+    struct m0_bufvec attr;
 
-    uint64_t           last_offset = 0;
+    uint64_t last_offset = 0;
 
     M0_SET0(&obj);
     instance = container->co_realm.re_instance;
@@ -276,12 +253,12 @@ static int object_write(struct m0_container *container)
     /*
      * alloc & prepare ext, data and attr. We will write 4k * 2.
      */
-    rc = alloc_vecs(&ext, &data, &attr, 1, 4096);
+    rc = alloc_vecs(&ext, &data, &attr, 1, BLOCK_SIZE);
     if (rc != 0) {
         printf("Failed to alloc ext & data & attr: %d\n", rc);
         goto out;
     }
-    prepare_ext_vecs(&ext, &data, &attr, 1, 4096, &last_offset, 'A');
+    prepare_ext_vecs(&ext, &data, &attr, 1, BLOCK_SIZE, &last_offset, 'A');
 
     /* Start to write data to object */
     rc = write_data_to_object(&obj, &ext, &data, &attr);
@@ -295,13 +272,11 @@ out:
     return rc;
 }
 
-static int read_data_from_object(struct m0_obj      *obj,
-                 struct m0_indexvec *ext,
-                 struct m0_bufvec   *data,
-                 struct m0_bufvec   *attr)
-{
-    int          rc;
-    struct m0_op *ops[1] = { NULL };
+static int read_data_from_object(struct m0_obj *obj, struct m0_indexvec *ext,
+                                 struct m0_bufvec *data,
+                                 struct m0_bufvec *attr) {
+    int rc;
+    struct m0_op *ops[1] = {NULL};
 
     /* Create the read request */
     m0_obj_op(obj, M0_OC_READ, ext, data, attr, 0, 0, &ops[0]);
@@ -314,11 +289,8 @@ static int read_data_from_object(struct m0_obj      *obj,
     m0_op_launch(ops, 1);
 
     /* wait */
-    rc = m0_op_wait(ops[0],
-            M0_BITS(M0_OS_FAILED,
-                M0_OS_STABLE),
-            M0_TIME_NEVER);
-    rc = rc ? : ops[0]->op_sm.sm_rc;
+    rc = m0_op_wait(ops[0], M0_BITS(M0_OS_FAILED, M0_OS_STABLE), M0_TIME_NEVER);
+    rc = rc ?: ops[0]->op_sm.sm_rc;
 
     /* fini and release the ops */
     m0_op_fini(ops[0]);
@@ -327,15 +299,12 @@ static int read_data_from_object(struct m0_obj      *obj,
     return rc;
 }
 
-static void verify_show_data(struct m0_bufvec *data,
-                 char c)
-{
+static void verify_show_data(struct m0_bufvec *data, char c) {
     int i, j;
 
     for (i = 0; i < data->ov_vec.v_nr; ++i) {
         printf("Block %6d:\n", i);
-        printf("%.*s", (int)data->ov_vec.v_count[i],
-                   (char *)data->ov_buf[i]);
+        printf("%.*s", (int)data->ov_vec.v_count[i], (char *)data->ov_buf[i]);
         printf("\n");
         // for (j = 0; j < data->ov_vec.v_count[i]; j++)
         //  if (((char*) data->ov_buf[i])[j] != c) {
@@ -346,17 +315,16 @@ static void verify_show_data(struct m0_bufvec *data,
     }
 }
 
-static int object_read(struct m0_container *container)
-{
-    struct m0_obj      obj;
-    struct m0_client  *instance;
-    int                rc;
+static int object_read(struct m0_container *container) {
+    struct m0_obj obj;
+    struct m0_client *instance;
+    int rc;
 
-        struct m0_indexvec ext;
-        struct m0_bufvec   data;
-        struct m0_bufvec   attr;
+    struct m0_indexvec ext;
+    struct m0_bufvec data;
+    struct m0_bufvec attr;
 
-    uint64_t           last_offset = 0;
+    uint64_t last_offset = 0;
 
     M0_SET0(&obj);
     instance = container->co_realm.re_instance;
@@ -371,12 +339,12 @@ static int object_read(struct m0_container *container)
     /*
      * alloc & prepare ext, data and attr. We will write 4k * 2.
      */
-    rc = alloc_vecs(&ext, &data, &attr, 1, 4096);
+    rc = alloc_vecs(&ext, &data, &attr, 1, BLOCK_SIZE);
     if (rc != 0) {
         printf("Failed to alloc ext & data & attr: %d\n", rc);
         goto out;
     }
-    prepare_ext_vecs(&ext, &data, &attr, 1, 4096, &last_offset, '\0');
+    prepare_ext_vecs(&ext, &data, &attr, 1, BLOCK_SIZE, &last_offset, '\0');
 
     /* Start to read data to object */
     rc = read_data_from_object(&obj, &ext, &data, &attr);
@@ -387,17 +355,15 @@ static int object_read(struct m0_container *container)
 
 out:
     /* Similar to close() */
-    m0_entity_fini(&obj.ob_entity);\
-    // printf("Object read: %d\n", rc);
+    m0_entity_fini(&obj.ob_entity);  // printf("Object read: %d\n", rc);
     return rc;
 }
 
-static int object_delete(struct m0_container *container)
-{
-    struct m0_obj      obj;
-    struct m0_client  *instance;
-    struct m0_op      *ops[1] = { NULL };
-    int                rc;
+static int object_delete(struct m0_container *container) {
+    struct m0_obj obj;
+    struct m0_client *instance;
+    struct m0_op *ops[1] = {NULL};
+    int rc;
 
     M0_SET0(&obj);
     instance = container->co_realm.re_instance;
@@ -411,9 +377,7 @@ static int object_delete(struct m0_container *container)
 
     m0_entity_delete(&obj.ob_entity, &ops[0]);
     m0_op_launch(ops, 1);
-    rc = m0_op_wait(ops[0],
-            M0_BITS(M0_OS_FAILED, M0_OS_STABLE),
-            M0_TIME_NEVER);
+    rc = m0_op_wait(ops[0], M0_BITS(M0_OS_FAILED, M0_OS_STABLE), M0_TIME_NEVER);
 
     /* fini and release */
     m0_op_fini(ops[0]);
@@ -425,11 +389,26 @@ static int object_delete(struct m0_container *container)
     return rc;
 }
 
+float get_avg_lat(float *arr_lat) {
+    double sum = 0;
+    int i;
+    for (i = 0; i < N_REQUEST; i++) {
+        sum += arr_lat[i];
+    }
+    return (float)(sum / N_REQUEST);
+}
 
-int main(int argc, char *argv[])
-{
+float timedifference_msec(struct timeval t0, struct timeval t1) {
+    return (t1.tv_sec - t0.tv_sec) * 1000.0f +
+           (t1.tv_usec - t0.tv_usec) / 1000.0f;
+}
+
+int main(int argc, char *argv[]) {
     int rc;
-  struct timeval start_time_w, end_time_w, start_time_r, end_time_r, start_exp_time, end_exp_time;
+    struct timeval start_time_w, end_time_w;
+    struct timeval start_exp_time, end_exp_time;
+    float *arr_write_latency = (float *)malloc(sizeof(float) * N_REQUEST);
+    float *arr_read_latency = (float *)malloc(sizeof(float) * N_REQUEST);
 
     if (argc != 6) {
         printf("%s HA_ADDR LOCAL_ADDR Profile_fid Process_fid obj_id\n",
@@ -438,24 +417,25 @@ int main(int argc, char *argv[])
     }
     obj_id.u_lo = atoll(argv[5]);
     if (obj_id.u_lo <= M0_ID_APP.u_lo) {
-        printf("obj_id invalid. Please refer to M0_ID_APP "
-               "in motr/client.c\n");
+        printf(
+            "obj_id invalid. Please refer to M0_ID_APP "
+            "in motr/client.c\n");
         exit(-EINVAL);
     }
 
     motr_dix_conf.kc_create_meta = false;
 
-    motr_conf.mc_is_oostore            = true;
-    motr_conf.mc_is_read_verify        = false;
-    motr_conf.mc_ha_addr               = argv[1];
-    motr_conf.mc_local_addr            = argv[2];
-    motr_conf.mc_profile               = argv[3];
-    motr_conf.mc_process_fid           = argv[4];
+    motr_conf.mc_is_oostore = true;
+    motr_conf.mc_is_read_verify = false;
+    motr_conf.mc_ha_addr = argv[1];
+    motr_conf.mc_local_addr = argv[2];
+    motr_conf.mc_profile = argv[3];
+    motr_conf.mc_process_fid = argv[4];
     motr_conf.mc_tm_recv_queue_min_len = M0_NET_TM_RECV_QUEUE_DEF_LEN;
-    motr_conf.mc_max_rpc_msg_size      = M0_RPC_DEF_MAX_RPC_MSG_SIZE;
-    motr_conf.mc_idx_service_id        = M0_IDX_DIX;
-    motr_conf.mc_idx_service_conf      = (void *)&motr_dix_conf;
-  LAYOUT_ID = get_layout_id(BLOCK_SIZE);
+    motr_conf.mc_max_rpc_msg_size = M0_RPC_DEF_MAX_RPC_MSG_SIZE;
+    motr_conf.mc_idx_service_id = M0_IDX_DIX;
+    motr_conf.mc_idx_service_conf = (void *)&motr_dix_conf;
+    LAYOUT_ID = get_layout_id(BLOCK_SIZE);
 
     rc = m0_client_init(&m0_instance, &motr_conf, true);
     if (rc != 0) {
@@ -470,51 +450,64 @@ int main(int argc, char *argv[])
         goto out;
     }
 
-  printf("N_REQUEST     = %d\n", N_REQUEST);
-  printf("BLOCK_SIZE    = %d\n", BLOCK_SIZE);
+    double total_payload =
+        (BLOCK_SIZE / 1024.0f / 1024.0f / 1024.0f) * N_REQUEST;  // in GB
 
-  gettimeofday(&start_exp_time, NULL);
-  int i;
-  int progress_mod = (int)N_REQUEST / 50;
-  float elapsed_r = 0;
-  float elapsed_w = 0;
-  for (i = 0; i < N_REQUEST; i++) {
-    rc = object_create(&motr_container);
-    if (rc == 0) {
-      {
-        // Measure READ and WRITE latency:
-        gettimeofday(&start_time_w, NULL);
-        rc = object_write(&motr_container);
-        gettimeofday(&end_time_w, NULL);
-        gettimeofday(&start_time_r, NULL);
-        rc = object_read(&motr_container);
-        gettimeofday(&end_time_r, NULL);
+    printf("total_payload = %.2f GB\n", total_payload);
+    printf("N_REQUEST     = %d\n", N_REQUEST);
+    printf("BLOCK_SIZE    = %d B\n", BLOCK_SIZE);
+
+    gettimeofday(&start_exp_time, NULL);
+    int i;
+    int progress_mod = (int)N_REQUEST / 50;
+    float elapsed_r = 0;
+    float elapsed_w = 0;
+    printf("..................................................\n");  // max
+                                                                     // progress
+    for (i = 0; i < N_REQUEST; i++) {
+        rc = object_create(&motr_container);
         assert(rc == 0);
-      }
-      // Dan: DELETE is MANDATORY in this simple example1.c
-      object_delete(&motr_container);
+        {
+            // Measure WRITE latency:
+            gettimeofday(&start_time_w, NULL);
+            rc = object_write(&motr_container);
+            gettimeofday(&end_time_w, NULL);
+            elapsed_w = timedifference_msec(start_time_w, end_time_w);
+            arr_write_latency[i] = elapsed_w;
+        }
+        assert(rc == 0);
+        {
+            // Measure READ latency:
+            gettimeofday(&start_time_w, NULL);
+            rc = object_read(&motr_container);
+            gettimeofday(&end_time_w, NULL);
+            elapsed_r = timedifference_msec(start_time_w, end_time_w);
+            arr_read_latency[i] = elapsed_r;
+        }
+        assert(rc == 0);
+        // Dan: DELETE is MANDATORY in this simple example1.c
+        object_delete(&motr_container);
+        if (i % progress_mod == 0) {
+            printf(".");
+            fflush(stdout);
+        }
+        // printf("elapsed_w %.1f    elapsed_r %.1f\n", elapsed_w, elapsed_r);
+        // printf("%.1f %.1f\n", end_time_w.tv_sec, start_time_w.tv_sec);
+        // exit(-1);
     }
-    elapsed_r += (((end_time_r.tv_sec - start_time_r.tv_sec) * 1000000) + (end_time_r.tv_usec - start_time_r.tv_usec))/1000000.0f; // seconds
-    elapsed_w += (((end_time_w.tv_sec - start_time_w.tv_sec) * 1000000) + (end_time_w.tv_usec - start_time_w.tv_usec))/1000000.0f; // seconds
-    if (i % progress_mod == 0){
-        printf(".");
-      fflush(stdout);
-    }
-  }
-  printf("\n");
-  gettimeofday(&end_exp_time, NULL);
+    printf("\n");
+    gettimeofday(&end_exp_time, NULL);
 
-  // int total_payload = N_REQUEST * BLOCK_SIZE / 1000; // in MB
-  
-  printf("Avg WRITE latency   = %.2f ms\n", elapsed_w * 1000/N_REQUEST);
-  printf("Avg READ latency   = %.2f ms\n", elapsed_r * 1000/N_REQUEST);
-  // printf("Throughput    = %d/%.2f = %.2f rps\n",N_REQUEST, elapsed, N_REQUEST / elapsed);
-  float exec_time = (((end_exp_time.tv_sec - start_exp_time.tv_sec) * 1000000) + (end_exp_time.tv_usec - start_exp_time.tv_usec))/1000000.0f; // seconds
-  printf("Raw elapsed time = %.2f secs = %.2f min\n",exec_time, exec_time/60);
+    printf("Avg WRITE latency   = %.2f ms\n", get_avg_lat(arr_write_latency));
+    printf("Avg READ latency   = %.2f ms\n", get_avg_lat(arr_read_latency));
+    float exec_time =
+        timedifference_msec(start_exp_time, end_exp_time) / 1000;  // seconds
+    printf("Raw elapsed time = %.2f secs = %.2f min\n", exec_time,
+           exec_time / 60);
 out:
     m0_client_fini(m0_instance, true);
     printf("app completed: %d\n", rc);
-  assert(rc == 0);
+    assert(rc == 0);
     return rc;
 }
 
