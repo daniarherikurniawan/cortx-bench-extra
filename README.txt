@@ -1,5 +1,6 @@
 
-
+"
+"
 ========================================================================================
                         Run a Single Node CORTX-Motr (Loops)
 ========================================================================================
@@ -439,7 +440,7 @@
     cd /mnt/extra/cortx-motr/motr/examples
     ./script/modify_param.py -file /mnt/extra/cortx-motr/motr/examples/example1_multithd_dan.c -params "N_REQUEST=1000 BLOCK_SIZE=16777216 N_PARALLEL_THD=1"
     gcc -I/mnt/extra/cortx-motr -DM0_EXTERN=extern -DM0_INTERNAL= -Wno-attributes -L/mnt/extra/cortx-motr/motr/.libs -lmotr -lpthread example1_multithd_dan.c -o example1_multithd_dan
-    
+
     ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 1 0 0 
     ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 0 1 0 
     ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 0 0 1 
@@ -472,9 +473,6 @@
             ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 1 1 1
             rm -rf m0trace*     # don't run this line if you will use ADDB
         done
-
-
-
 
 
 
@@ -604,7 +602,7 @@
     # edit the hosts' IP
     sudo bash -c "echo 10.140.81.147 `hostname` >> /etc/hosts"
 
-
+    # disable firewall
     sudo ufw disable
 
     # let ipTable see bridged networks
@@ -689,16 +687,30 @@ EOF
 
     # init cluster (only on master node)
         sudo su
-        kubeadm init --pod-network-cidr=192.168.0.0/16
-        echo -e "export KUBECONFIG=/etc/kubernetes/admin.conf \nalias kc=kubectl \nalias all=\"kubectl get pods -A -o wide\"" >> /etc/bashrc && source /etc/bashrc
-        kubectl create -f https://projectcalico.docs.tigera.io/manifests/tigera-operator.yaml
-        cd /mnt/extra
-        wget https://gist.githubusercontent.com/faradawn/2288618db8ad0059968f48b6647732f9/raw/133f7f5113b4bc76f06dd5240ae7775c2fb74307/custom-resource.yaml
-        kubectl create -f custom-resource.yaml
+            kubeadm init --pod-network-cidr=192.168.0.0/16
+            mkdir -p $HOME/.kube && sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+            sudo chown $(id -u):$(id -g) $HOME/.kube/config
+            
+            echo -e "export KUBECONFIG=/etc/kubernetes/admin.conf \nalias kc=kubectl \nalias all=\"kubectl get pods -A -o wide\"" >> /etc/bashrc && source /etc/bashrc
+            echo -e "export KUBECONFIG=/etc/kubernetes/admin.conf \nalias kc=kubectl \nalias all=\"kubectl get pods -A -o wide\"" >> /etc/zshrc && source /etc/zshrc
+
+            # for multiple node is mandatory
+            kubectl create -f https://projectcalico.docs.tigera.io/manifests/tigera-operator.yaml
+            cd /mnt/extra
+            wget https://gist.githubusercontent.com/faradawn/2288618db8ad0059968f48b6647732f9/raw/133f7f5113b4bc76f06dd5240ae7775c2fb74307/custom-resource.yaml
+            kubectl create -f custom-resource.yaml
         exit 
 
-        # turn off kubeadm
+        # to enable checking kubectl on non root
+        mkdir -p $HOME/.kube && sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+        sudo chown $(id -u):$(id -g) $HOME/.kube/config
+        sudo chown $USER /etc/kubernetes/admin.conf
+
+        # turn off / shutdown / kill kubeadm
             # sudo kubeadm reset
+
+    # check whether it is installed
+    sudo kubectl get nodes
 
 3. Deploy CORTX to kubernetes
     
@@ -706,9 +718,9 @@ EOF
     cd /mnt/extra
     git clone -b main https://github.com/Seagate/cortx-k8s
 
-    # modify solution.yaml 
+    # modify "solution.yaml" 
         cd /mnt/extra/cortx-k8s/k8_cortx_cloud
-        sudo sed -i 's|csm_mgmt_admin_secret: null|csm_mgmt_admin_secret: Cortx123|g' solution.example.yaml
+        sudo sed -i 's|csm_mgmt_admin_secret: null|csm_mgmt_admin_secret: Cortx123\!|g' solution.example.yaml
         
         vim solution.example.yaml
 
@@ -717,7 +729,11 @@ EOF
                 # for 1 node deployment, the node1: name should be `hostname`
                 # then delete other nodes 
 
-            # 2. Search for "?sd"
+            # 2. Only use 1 CVG! (otherwise it failed on "deploy-cortx-cloud")
+                # storage:
+                    # cvg1 
+
+            # 3. Search for "?sd"
                 # we will use "dev/loop4" "dev/loop5" "dev/loop6" "dev/loop7" for Motr 
                 # make sure that those devices existed, otherwise follow "Create loop devices"
                 # Changes the sdc to loop4 and so on!
@@ -729,42 +745,51 @@ EOF
         mv solution.example.yaml solution.yaml
     
 
+    # Run prerequisite [After each shutdown]
     cd /mnt/extra/cortx-k8s/k8_cortx_cloud
     sudo ./prereq-deploy-cortx-cloud.sh -d /dev/loop8 -s solution.yaml
 
-    sudo su
-        # untaint master 
-            # change the dan-cortx-1.novalocal with the output of `hostname`
-            kubectl taint node dan-cortx-1.novalocal node-role.kubernetes.io/master:NoSchedule-
-            kubectl taint node dan-cortx-1.novalocal node-role.kubernetes.io/control-plane:NoSchedule-
+        # check the provisioner is mounted or not
+        lsblk -f | grep "/mnt/fs-local-volume"
+            # loop8  ext4        6c0abb28-82da-4f9c-96d1-4ae070d8b57c /mnt/fs-local-volume
 
-        # restart core-dns pods
+    sudo su
+        # untaint master [run-once]
+            kubectl taint node `hostname` node-role.kubernetes.io/master:NoSchedule-
+            kubectl taint node `hostname` node-role.kubernetes.io/control-plane:NoSchedule-
+
+        # restart core-dns pods [run-once]
         kubectl rollout restart -n kube-system deployment/coredns
 
-        # start deploy
-        tmux new -t k8s
-            # session not found: k8s
-        time ./deploy-cortx-cloud.sh solution.example.yaml
-
-        ctl b d
-        tmux a -t k8s
+        # START k8 deployment [10 mins]
+        time ./deploy-cortx-cloud.sh solution.yaml
     exit
 
-4. Upload File to CORTX-K8 (IAM API)
+    # Shutdown/reset 
+        # cd /mnt/extra/cortx-k8s/k8_cortx_cloud
+        # sudo ./destroy-cortx-cloud.sh
+        # sudo umount /mnt/fs-local-volume
+
+4. Establish CORTX-K8 Credential [in-SUDO]
+    # Do this after each k8 restart 
+    
+    sudo su 
+
     # login to CSM to get the Bearer token 
     export CSM_IP=`kubectl get svc cortx-control-loadbal-svc -ojsonpath='{.spec.clusterIP}'`
-        # Error from server (NotFound): services "cortx-control-loadbal-svc" not found
-
-    kubectl get secrets/cortx-secret --namespace default --template={{.data.csm_mgmt_admin_secret}} | base64 -d
 
     tok=$(curl -d '{"username": "cortxadmin", "password": "Cortx123!"}' https://$CSM_IP:8081/api/v2/login -k -i | grep -Po '(?<=Authorization: )\w* \w*') && echo $tok
+        # Bearer 936b8c4d8756421682fdb059eec75c4b
 
     # create and check IAM user
     curl -X POST -H "Authorization: $tok" -d '{ "uid": "12345678", "display_name": "gts3account", "access_key": "gregoryaccesskey", "secret_key": "gregorysecretkey" }' https://$CSM_IP:8081/api/v2/iam/users -k
 
-    curl -H "Authorization: $tok" https://$CSM_IP:8081/api/v2/iam/users/12345678 -k -i
+    curl -H "Authorization: $tok" https://$CSM_IP:8081/api/v2/iam/users/12345678 -k -i | grep "user_id"
+        # {"tenant": "", "user_id": "12345678", ....
 
-    # install aws [optional]
+5. Install aws cli [No-NEED]
+
+    # comparable to MinIO interface
     pip3 install awscli awscli-plugin-endpoint
     aws configure set plugins.endpoint awscli_plugin_endpoint
     aws configure set default.region us-east-1
@@ -785,46 +810,699 @@ EOF
     aws s3 rb s3://test-bucket --endpoint-url http://$IP:$PORT
     aws s3 ls --endpoint-url http://$IP:$PORT
 
+6. Run Clear Cache loop  
+    # Run this in the VSCode terminal, otherwise the process will terminate easily
+    # Background Task [On other terminal]
+    # keep this script running while benchmarking 
 
-5. Benchmark CORTX-K8
+    cd /mnt/extra/cortx-motr/motr/examples/script/
+    sudo ./free_page_cache.sh 0.25
+
+7. S3 Benchmark CORTX-K8  [in-SUDO]
     
+    sudo su
+
+    # Install s3bench
+        cd /mnt/extra
+        yum install -y go
+        wget https://github.com/Seagate/s3bench/releases/download/v2022-03-14/s3bench.2022-03-14
+        chmod +x s3bench.2022-03-14 
+        mv s3bench.2022-03-14 s3bench
+
+    # Run benchmark
+
+        IP=`ifconfig | grep "inet 192" | awk '{print $2}'`
+        PORT=`kubectl describe svc cortx-io-svc-0 | grep "rgw-http  " | grep "NodePort" | grep -o -E '[0-9]+'`
+        echo $IP:$PORT 
+
+        cd /mnt/extra
+        ./s3bench -accessKey gregoryaccesskey -accessSecret gregorysecretkey -bucket loadgen -endpoint http://$IP:$PORT -numClients 1 -numSamples 500 -objectNamePrefix=loadgen -objectSize 1Kb -region us-east-1 -o test1.log
+
+        cd /mnt/extra
+        mkdir -p /mnt/extra/logs/
+        # "4Kb" "8Kb" "16Kb" "32Kb" "64Kb" "128Kb" "256Kb" "512Kb" "1Mb" "2Mb" "4Mb" "8Mb" "16Mb"
+        blockSizeArr=("16Mb")
+        for size in "${blockSizeArr[@]}"
+        do
+            echo "$size"
+            ./s3bench -accessKey gregoryaccesskey -accessSecret gregorysecretkey -bucket loadgen -endpoint http://$IP:$PORT -numClients 1 -numSamples 1000 -objectNamePrefix=loadgen -objectSize $size -region us-east-1 -o logs/s3bench-$size.log
+        done
+
+    # Error Debug
+        # 1. panic: Failed to create bucket: InvalidAccessKeyId
+            # Solution: Follow the "Establish CORTX-K8 Credential"
+
+8. Download all the logs 
+    # Download logs / scp logs download the logs to local
+
+    log_dir="cortx-k8-s3bench-v0"
+    mkdir -p ~/Documents/_CORTX/logs/$log_dir
+    rsync -Pav daniar@192.5.86.172:/mnt/extra/logs/ ~/Documents/_CORTX/logs/$log_dir
+    # scp -rp daniar@192.5.86.172:/mnt/extra/logs/ ~/Documents/_CORTX/logs/$log_dir
+
+
+
+
+
+\"
+"
+========================================================================================
+                        Run a Single Node Ceph (Loops)
+========================================================================================
+
+# project ..849 @UC "Skylake"
+
+# Create Reservation
+    # https://chi.tacc.chameleoncloud.org/project/
+    
+    1. Reserve Physical Host
+        # click "Leases" => "+ Create Lease"
+        # lease name = "dan-cortx"
+            "$node_type", "compute_skylake"
+            Max lease: 
+                7 days
+    2. Reserve Network [No-NEED]
+
+# Launching an Instance -> name it as "node-1" "node-2" etc
+    # In the sidebar, click Compute, then click Instances
+    # Click on the Launch Instance
+        # pick the correct reservation 
+        # count = 1 (for singlenode)
+        # Image: "CC-CentOS7"    # need 1062?? no
+    # Select "sharednet1"
+    # Choose the ssh key
+        # "dan-macpro"
+
+# Allocate floating IPs
+    # Book the IP interface
+        # Click "Network -> Floating IPs -> Allocate IP To Project"
+        # Write description
+        # Click "Allocate IP"
+
+    # click "Associate" OR click "attach interface"
+        # Click "Network -> Floating IPs"
+
+    # ony 6 available public interfaces
+    # wait a few minutes
+    # is it Spawning?? https://chi.tacc.chameleoncloud.org/project/instances/
+
+# If you can't access the cc user on SSH
+    # open the console terminal via the website
+    # edit the .ssh/authorized_keys and add your pub_key manually!!!
+    # now, the hostname will be different 
+        # e.g. from dan-storage to zhenz-test
+    # run "sudo dhclient" from the web-based ssh console
+
+00. Preparation [Login as "cc"]
+    # Use cc user!!
+    ssh cc@129.114.108.8
+    # Setup disk 
+        # check if there is already mounted disk
+        df -H
+            # /dev/sda1       251G  2.8G  248G   2% /
+            # should be enough
+
+    # Setup user daniar 
+    sudo adduser daniar
+    sudo usermod -aG wheel daniar
+    sudo su 
+    cp -r /home/cc/.ssh /home/daniar
+    chmod 700  /home/daniar/.ssh
+    chmod 644  /home/daniar/.ssh/authorized_keys
+    chown daniar  /home/daniar/.ssh
+    chown daniar  /home/daniar/.ssh/authorized_keys
+    echo "daniar ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers.d/90-cloud-init-users
+    exit
+    exit
+
+
+0. Setup zsh [Login on "daniar"]
+
+    ssh 129.114.108.8 
+
+        sudo su
+        yum update -y
+        yum install zsh -y
+        chsh -s /bin/zsh root
+
+        # Break the Copy here ====
+
+        exit
+        sudo chsh -s /bin/zsh daniar
+        which zsh
+        echo $SHELL
+
+        sudo yum install wget git vim zsh -y
+ 
+        # Break the Copy here ====
+
+        printf 'Y' | sh -c "$(wget -O- https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+
+        /bin/cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc
+        sudo sed -i 's|home/daniar:/bin/bash|home/daniar:/bin/zsh|g' /etc/passwd
+        sudo sed -i 's|ZSH_THEME="robbyrussell"|ZSH_THEME="risto"|g' ~/.zshrc
+        zsh
+        exit
+        exit
+
+1. Setup passwordless SSH among servers [No-NEED]
+    # Go ahead if you guys want to run this as well
+    
+    # Run at Local
+        declare -a arrIP=("192.5.86.186" "192.5.86.195" "192.5.86.194")
+        for ip in "${arrIP[@]}"
+        do
+            echo "$ip"
+            scp /Users/daniar/Documents/_CORTX/ssh-key/id_rsa $ip:~/.ssh/
+            scp /Users/daniar/Documents/_CORTX/ssh-key/id_rsa.pub $ip:~/.ssh/
+            ssh $ip "cd ~/.ssh/; cat id_rsa.pub >> authorized_keys; echo 'StrictHostKeyChecking no' > config; chmod go-rw config"
+        done
+
+
+2. Create XFS loop devices [[AFTER EACH REBOOT]]
+    # https://www.thegeekdiary.com/how-to-create-virtual-block-device-loop-device-filesystem-in-linux/
+    # If there is only 1 physical storage, you must create loop devices!
+        # linux support block device called the loop device, which maps a normal file onto a virtual block device
+
+    # Create a file (25 GB each)
+
+        sudo chown daniar -R /mnt/
+        mkdir -p /mnt/extra/loop-files/
+        cd /mnt/extra/loop-files/
+        dd if=/dev/zero of=loopbackfile1.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile2.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile3.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile4.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile5.img bs=100M count=250
+        
+        # check size 
+        # du -sh loopbackfile1.img 
+
+            # 1048576000 bytes (1.0 GB) copied, 0.723784 s, 1.4 GB/s
+            # 1001M loopbackfile1.img
+
+    # Create the loop device
+        cd /mnt/extra/loop-files/
+        sudo losetup -fP loopbackfile1.img
+        sudo losetup -fP loopbackfile2.img
+        sudo losetup -fP loopbackfile3.img
+        sudo losetup -fP loopbackfile4.img
+        sudo losetup -fP loopbackfile5.img
+
+    # print loop devices 
+        losetup -a
+            # /dev/loop0: []: (/mnt/extra/loop-files/loopbackfile1.img)
+            # /dev/loop1: []: (/mnt/extra/loop-files/loopbackfile2.img)
+            # /dev/loop2: []: (/mnt/extra/loop-files/loopbackfile3.img)
+
+    # Format devices into filesystems 
+        printf "y" | sudo mkfs -t xfs -q /mnt/extra/loop-files/loopbackfile1.img 
+        printf "y" | sudo mkfs -t xfs -q /mnt/extra/loop-files/loopbackfile2.img 
+        printf "y" | sudo mkfs -t xfs -q /mnt/extra/loop-files/loopbackfile3.img 
+        printf "y" | sudo mkfs -t xfs -q /mnt/extra/loop-files/loopbackfile4.img 
+        printf "y" | sudo mkfs -t xfs -q /mnt/extra/loop-files/loopbackfile5.img 
+        lsblk -f
+
+    # mount loop devices [No-NEED]
+
+        # mkdir -p /mnt/extra/loop-devs/loop0
+        # mkdir -p /mnt/extra/loop-devs/loop1
+        # mkdir -p /mnt/extra/loop-devs/loop2
+        # mkdir -p /mnt/extra/loop-devs/loop3
+        # mkdir -p /mnt/extra/loop-devs/loop4
+        # cd /mnt/extra/loop-devs/
+        # sudo mount -o loop /dev/loop0 /mnt/extra/loop-devs/loop0
+        # sudo mount -o loop /dev/loop1 /mnt/extra/loop-devs/loop1
+        # sudo mount -o loop /dev/loop2 /mnt/extra/loop-devs/loop2
+        # sudo mount -o loop /dev/loop3 /mnt/extra/loop-devs/loop3
+        # sudo mount -o loop /dev/loop4 /mnt/extra/loop-devs/loop4
+        lsblk -f
+        df -h 
+
+        # remove loop devs [No-NEED]
+            # sudo umount /mnt/extra/loop-devs/loop0
+            # sudo umount /mnt/extra/loop-devs/loop1
+            # sudo umount /mnt/extra/loop-devs/loop2
+            # sudo umount /mnt/extra/loop-devs/loop3
+            # sudo umount /mnt/extra/loop-devs/loop4
+            # sudo losetup -d /dev/loop0
+            # sudo losetup -d /dev/loop1
+            # sudo losetup -d /dev/loop2
+            # sudo losetup -d /dev/loop3
+            # sudo losetup -d /dev/loop4
+            # rm -rf /mnt/extra/loop-files/*.img
+
+        # check using "lsblk"
+            # we will use "loop5" "loop6" "loop7" for Motr 
+            # "loop8" for log 
+
+2. Install Ceph 
+    # https://docs.ceph.com/en/mimic/start/quick-start-preflight/
+
+    # dependencies
+        # install subscription-manager
+        sudo yum update
+        sudo yum makecache
+        sudo yum -y install subscription-manager
+        sudo yum -y install firewalld
+
+    # Preps
+    sudo subscription-manager repos --enable=rhel-7-server-extras-rpms
+    sudo yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+
+    # Add ceph repo 
+cat <<EOF | sudo tee /etc/yum.repos.d/ceph.repo
+[ceph-noarch]
+name=Ceph noarch packages
+baseurl=https://download.ceph.com/rpm-luminous/el7/noarch
+enabled=1
+gpgcheck=1
+type=rpm-md
+gpgkey=https://download.ceph.com/keys/release.asc
+EOF
+
+    # Update your repository and install ceph-deploy:
+        sudo yum -y install ceph-deploy
+
+3. Setup config 
+    
+    # install ntp 
+    sudo yum -y install ntp ntpdate ntp-doc
+    sudo ntpdate 0.us.pool.ntp.org
+    sudo hwclock --systohc
+    sudo systemctl enable ntpd.service
+    sudo systemctl start ntpd.service
+
+
+    # Install ssh server 
+    sudo yum -y install openssh-server
+
+    # set etc/hosts
+    sudo bash -c "echo 10.140.82.40 node-1 >> /etc/hosts"
+    sudo bash -c "echo 10.140.82.255 node-2 >> /etc/hosts"
+    sudo bash -c "echo 10.140.83.222 node-3 >> /etc/hosts"
+
+    # update ssh config
+cat <<EOF | sudo tee ~/.ssh/config
+Host node-1
+   Hostname node-1
+   User daniar
+Host node-2
+   Hostname node-2
+   User daniar
+Host node-3
+   Hostname node-3
+   User daniar
+
+EOF
+
+    # disable firewall 
+    sudo ufw disable
+    sudo firewall-cmd --state
+
+    # selinux
+    sudo setenforce 0
+    sudo sed -i 's/^SELINUX=enforcing$/SELINUX=disabled/' /etc/selinux/config
+
+    # enable plugin-priorities
+    sudo yum -y install yum-plugin-priorities 
+    --enablerepo=rhel-7-server-optional-rpms
+
+
+4. Ceph Deploy [On-MASTER]
+    # https://ralph.blog.imixs.com/2020/02/28/howto-install-ceph-on-centos-7/
+    # https://www.linuxtechi.com/install-configure-ceph-cluster-centos-7/
+
+    sudo mkdir -p /mnt/extra/ceph_cluster
+    cd /mnt/extra/ceph_cluster
+    ceph-deploy new node-1 node-2 node-3        # be ready to type "yes"
+        # ... Writing initial config to ceph.conf...
+
+    # verify the Ceph configuration
+        cat ceph.conf | grep mon_host
+
+    # Patch [Run in EACH NODE]
+        # workaround: https://tracker.ceph.com/issues/12694
+        sudo mv /etc/yum.repos.d/ceph.repo /etc/yum.repos.d/ceph-deploy.repo
+
+        # https://www.netways.de/en/blog/2018/11/14/ceph-mimic-using-loop-devices-as-osd/
+        sudo sed -i "s|return TYPE == 'disk'|return TYPE == 'disk' or TYPE == 'loop' or TYPE == 'part'|g" /usr/lib/python2.7/site-packages/ceph_volume/util/disk.py
+        cat /usr/lib/python2.7/site-packages/ceph_volume/util/disk.py | grep "TYPE == 'loop'"
+
+    # Install Ceph 
+
+        cd /mnt/extra/ceph_cluster
+        ceph-deploy install --release luminous node-1 node-2 node-3 
+            # ceph version 12.2.13 (584a20eb0237c657dc0567da126be145106aa47e) luminous (stable)
+
+        # Deploy the initial monitor(s) and gather the keys:
+        ceph-deploy mon create-initial
+
+        # copy the configuration file to all ceph nodes
+        ceph-deploy admin node-1 node-2 node-3
+
+        # Deploy a manager daemon
+        ceph-deploy mgr create node-1
+
+        # Next create metadata servers:
+        ceph-deploy mds create node-1 node-2 node-3
+
+        # check status 
+        sudo ceph status 
+
+              # services:
+                # mon: 3 daemons, quorum node-1,node-2,node-3
+                # mgr: no daemons active
+                # osd: 0 osds: 0 up, 0 in
+
+              # data:
+                # pools:   0 pools, 0 pgs
+                # objects: 0 objects, 0B
+                # usage:   0B used, 0B / 0B avail
+                # pgs:
+
+5. Create Object Store Daemons (OSDs)
+    # will use /dev/loop5, /dev/loop6, /dev/loop7, /dev/loop8, /dev/loop9
+    
+    cd /mnt/extra/ceph_cluster
+    # ceph-deploy osd create --data /dev/loop1 node-3 --filestore --journal /dev/loop3 --fs-type xfs
+    ceph-deploy osd create --data /dev/loop1 node-1
+    ceph-deploy osd create --data /dev/loop2 node-1
+    ceph-deploy osd create --data /dev/loop3 node-1
+    ceph-deploy osd create --data /dev/loop1 node-2
+    ceph-deploy osd create --data /dev/loop2 node-2
+    ceph-deploy osd create --data /dev/loop3 node-2
+    ceph-deploy osd create --data /dev/loop1 node-3
+    ceph-deploy osd create --data /dev/loop2 node-3
+    ceph-deploy osd create --data /dev/loop3 node-3
+
+    # create pool 
+        # https://docs.ceph.com/en/latest/rados/operations/pools/
+        # https://computingforgeeks.com/create-a-pool-in-ceph-storage-cluster/
+            # replicated, not erasure
+        sudo ceph osd pool create mypool 100 100 replicated
+
+        # Associate Pool to Application
+        sudo ceph osd pool application enable mypool rgw
+
+    # verify cluster status 
+    sudo ceph -s
+        # data:
+            # pools:   1 pools, 100 pgs
+            # objects: 0 objects, 0B
+            # usage:   9.08GiB used, 211GiB / 220GiB avail
+            # pgs:     100 active+clean
+
+    sudo ceph health
+        # HEALTH_WARN clock skew detected on mon.node-2, mon.node-3
+            # sudo timedatectl set-ntp false
+            # sudo ntpdate -u pool.ntp.org 
+            # sudo timedatectl set-ntp true
+    
+    sudo ceph health        # check after 30s, the cluster need time to check the clock skew
+
+6. Ceph Dashboard 
+    # https://ralph.blog.imixs.com/2020/02/28/howto-install-ceph-on-centos-7/
+    # Enable Dashboard: https://docs.ceph.com/en/quincy/mgr/dashboard/
+    # Works: https://stackoverflow.com/questions/55549420/
+
+    cd /mnt/extra/ceph_cluster
+    sudo ceph mgr module enable dashboard
+        # ceph mgr module disable dashboard
+
+    sudo ceph mgr services          # wait 1 min 
+        # {
+        #    "dashboard": "http://node-1.novalocal:7000/"
+        # }
+
+    # Port Forwarding [Run at LOCAL]
+
+        ssh -L 9999:localhost:7000  daniar@192.5.86.186
+
+        # visit this at local: http://localhost:9999/
+
+            # Copyright © 2016 by Ceph Contributors. Free software (LGPL 2.1)
+            # ceph version 12.2.13 (584a20eb0237c657dc0567da126be145106aa47e) luminous (stable)
+
+
+7. Start Rados Gateway (rgw)
+    # Just a sneak peek: https://www.youtube.com/watch?v=6uX23Q3y_SU
+    # https://access.redhat.com/documentation/en-us/red_hat_ceph_storage/3/html/installation_guide_for_red_hat_enterprise_linux/manually-installing-ceph-object-gateway
+    # https://docs.ceph.com/en/mimic/start/quick-ceph-deploy/
+
+    # install rgw daemon 
+        sudo yum -y install ceph-radosgw
+
+    # install rgw sync agent 
+        sudo yum -y install radosgw-agent
+
+    # Create a keyring
+        sudo ceph-authtool --create-keyring /etc/ceph/ceph.client.radosgw.keyring
+        sudo chmod +r /etc/ceph/ceph.client.radosgw.keyring
+
+    # Generate a Ceph Object Gateway user name
+        sudo ceph-authtool /etc/ceph/ceph.client.radosgw.keyring -n client.radosgw.node-1 --gen-key
+
+    # Add capabilities to the key:
+        sudo ceph-authtool -n client.radosgw.node-1 --cap osd 'allow rwx' --cap mon 'allow rwx' /etc/ceph/ceph.client.radosgw.keyring
+
+    # add the key to Ceph Cluster
+        sudo ceph -k /etc/ceph/ceph.client.admin.keyring auth add client.radosgw.node-1 -i /etc/ceph/ceph.client.radosgw.keyring
+
+    # Distribute the keyring to the gateway host 
+        # no need because the admin node is gateway node 
+
+    # Add a Gateway Configuration to Ceph
+        # The host variables determine which host runs each instance of a radosgw daemon
+cat <<EOF | sudo tee -a /etc/ceph/ceph.conf
+[client.radosgw.node-1]
+host = node-1
+keyring = /etc/ceph/ceph.client.radosgw.keyring
+rgw socket path = ""
+log file = /var/log/radosgw/client.radosgw.node-1.log
+rgw frontends = "civetweb port=8080"
+rgw print continue = false
+EOF
+
+    # Distribute updated Ceph configuration file
+        ceph-deploy --overwrite-conf config pull node-1 
+            # Got /etc/ceph/ceph.conf from node-1
+        ceph-deploy --overwrite-conf config push node-2 node-3
+
+    # Create Data Directory
+        sudo mkdir -p /var/lib/ceph/radosgw/ceph-radosgw.node-1
+        sudo mkdir -p /var/log/radosgw/
+
+    # Adjust Directory Permissions
+        sudo chown daniar /var/run/ceph
+        sudo chown daniar /var/log/radosgw/
+
+    # Start radosgw service
+        # https://tracker.ceph.com/issues/24265 => becareful with the @xxxx
+
+        sudo systemctl start ceph-radosgw@radosgw.node-1
+        # sudo systemctl restart ceph-radosgw@radosgw.node-1
+        sudo systemctl status ceph-radosgw@radosgw.node-1
+        # sudo systemctl stop ceph-radosgw@radosgw.node-1
+        
+        sudo firewall-cmd --state
+            # not running
+
+    # check status 
+        curl node-1:8080
+
+            # <?xml version="1.0" encoding="UTF-8"?><ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Owner><ID>anonymous</ID><DisplayName></DisplayName></Owner><Buckets></Buckets></ListAllMyBucketsResult>%
+
+    # Port Forwarding [Run at LOCAL]
+
+        ssh -L 8888:localhost:8080  daniar@192.5.86.186
+
+        # visit this at local: http://localhost:8888/
+
+            # <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+            #    <Owner>
+            #        <ID>anonymous</ID>
+            #        <DisplayName/>
+            #    </Owner>
+            # <Buckets/>
+            # </ListAllMyBucketsResult>
+
+
+8. Prepare Credentials (S3 interface)
+    # https://access.redhat.com/documentation/en-us/red_hat_ceph_storage/1.2.3/html-single/ceph_object_gateway_for_centos_x86_64/index
+    
+    # Create a radosgw user for S3 access
+        sudo radosgw-admin user create --uid="testuser" --display-name="First User"
+        sudo radosgw-admin user list
+        sudo radosgw-admin user info --uid=testuser
+            # sudo radosgw-admin user rm --uid=testuser
+
+    # Create a Swift user
+        sudo radosgw-admin subuser create --uid=testuser --subuser=testuser:swift --access=full
+        
+        # get the "access_key" and "secret_key"
+            # ...
+            # "keys": [
+            #    {
+                    "user": "testuser",
+                    "access_key": "Y833676BM11O30BTS5FC",
+                    "secret_key": "iBAx83AbY0hUUm9BCRqmwTKbdbod3cbKWU7PNR7U"
+            #    }
+            #],
+
+    # Create the secret key:
+        sudo radosgw-admin key create --subuser=testuser:swift --key-type=swift --gen-secret
+
+            # "swift_keys": [
+            #    {
+                    "user": "testuser:swift",
+                    "secret_key": "TD2f8KR1zlQJ3elNWivIAi8tZgI8Cnlh7Yx61HB5"
+            #    }
+            #],
+
+    # Test S3 Access 
+
+        # dependencies
+        sudo yum -y install python-boto
+
+        # create test client
+        cd /mnt/extra/ceph_cluster
+cat <<EOF | sudo tee s3test.py
+import boto
+import boto.s3.connection
+access_key = 'Y833676BM11O30BTS5FC'
+secret_key = 'iBAx83AbY0hUUm9BCRqmwTKbdbod3cbKWU7PNR7U'
+conn = boto.connect_s3(
+    aws_access_key_id = access_key,
+    aws_secret_access_key = secret_key,
+    host = "10.140.82.40",
+    port = 8080,
+    is_secure=False,
+    calling_format = boto.s3.connection.OrdinaryCallingFormat(),
+)
+bucket = conn.create_bucket('my-new-bucket')
+for bucket in conn.get_all_buckets():
+    print "{name}\t{created}".format(
+        name = bucket.name,
+        created = bucket.creation_date,
+)
+EOF
+
+        # run s3 client 
+            cd /mnt/extra/ceph_cluster
+            python2 s3test.py
+                # my-new-bucket 2022-07-22T16:34:07.905Z
+
+    # Test swift access
+        # dependencies
+            sudo yum -y install python-setuptools
+            # sudo pip install ez_setup
+            pip install setuptools
+            pip install python-swiftclient
+
+        # run test 
+            swift -A http://10.140.82.40:8080/auth/1.0 -U testuser:swift -K 'TD2f8KR1zlQJ3elNWivIAi8tZgI8Cnlh7Yx61HB5' list
+                # my-new-bucket
+
+
+9. Clone CORTX-bench-extra
+    # Change the "daniarherikurniawan" with your github username
+    # Set passwordless github push/pull 
     cd /mnt/extra
-    sudo yum install -y go
-    wget https://github.com/Seagate/s3bench/releases/download/v2022-03-14/s3bench.2022-03-14 && chmod +x s3bench.2022-03-14 && mv s3bench.2022-03-14 s3bench
+    git config --global user.email "ddhhkk2@gmail.com"
+    git config --global user.name "daniarherikurniawan"
+    git config --global credential.helper store         # store pass in ~/.git-credentials as plain text format.
 
-    ./s3bench -accessKey gregoryaccesskey -accessSecret gregorysecretkey -bucket loadgen -endpoint http://$IP:$PORT -numClients 5 -numSamples 100 -objectNamePrefix=loadgen -objectSize 1Mb -region us-east-1 -o test1.log
+    cd /mnt/extra 
+    git clone https://daniarherikurniawan@github.com/daniarherikurniawan/cortx-bench-extra.git
+    
+    # Run clear cache loop  
+    cd /mnt/extra/cortx-bench-extra/script  
+    sudo ./free_page_cache.sh 0.25
+
+        
+10. Benchmark Ceph using S3bench
+    
+    # Install s3bench
+        # https://github.com/markhpc/hsbench
+
+        sudo yum -y install jq
+        sudo yum install -y go
+            # sudo yum remove go
+
+        go env 
+            # GOROOT="/usr/lib/golang"
+            # GOPATH="/root/go"
+
+        which go
+        sudo go install github.com/aws/aws-sdk-go@latest
+        sudo find / -type d -name 'aws-sdk-go'
+            # /root/go/pkg/mod/cache/download/github.com/aws/aws-sdk-go
+
+        # Install hsbench
+            # https://medium.com/@sherlock297/go-get-installing-executables-with-go-get-in-module-mode-is-deprecated-de3a30439596
+        sudo go install github.com/markhpc/hsbench@latest 
+        sudo find / -name 'hsbench'
+            # /root/go/pkg/mod/cache/download/github.com/markhpc/hsbench
+        
+        sudo ls /root/go/bin
+            # hsbench
+        
+    # Run benchmark
+
+        # -z : Size of objects in bytes with postfix K, M, and G (default "1M")
+        # -n : Maximum number of objects <-1 for unlimited> (default -1)
+        # -t : Number of threads to run (default 1)
+        # -b : Number of buckets to distribute IOs across (default 1)
+        # -ri : Number of seconds between report intervals (default 1)
+        # -d : Maximum test duration in seconds <-1 for unlimited> (default 60)
+
+        sudo su
+
+        IP=`ifconfig | grep "inet 10" | awk '{print $2}'`
+        PORT=8080
+        echo $IP:$PORT 
+        daniarsecretkey="TD2f8KR1zlQJ3elNWivIAi8tZgI8Cnlh7Yx61HB5"
+        access_key="Y833676BM11O30BTS5FC"
+        secret_key="iBAx83AbY0hUUm9BCRqmwTKbdbod3cbKWU7PNR7U"
+
+        cd /root/go/bin
+        ./hsbench -a $access_key -s $secret_key -u http://$IP:$PORT  -z 4K -t 1 -n 10000 -b 100 -d -1 -m cxipgdcx -ri 10 -j test.log 
+            # Ops: 100 -> means there are 100 requests
+
+        # show result 
+        cat test.log| jq | grep TOTAL -A 8
+
+            # --
+            #    "IntervalName": "TOTAL",
+            #    "Seconds": 40.772364648,
+            #    "Mode": "GET",
+            #    "Ops": 1000,
+            #    "Mbps": 0.0958063147360675,
+            #    "Iops": 24.52641657243328,
+            #    "MinLat": 0.673861,
+            #    "AvgLat": 1.200316826,
+            #    "NinetyNineLat": 2.327649,
+            # --
 
 
+        cd /root/go/bin
+        mkdir -p /root/go/bin/logs/
+        # "4K" "8K" "16K" "32K" "64K" "128K" "256K" "512K" "1M" "2M" "4M" "8M" "16M"
+        blockSizeArr=("4K" "8K" "16K" "32K" "64K" "128K" "256K" "512K" )
+        for size in "${blockSizeArr[@]}"
+        do
+            echo "$size"
+            ./hsbench -a $access_key -s $secret_key -u http://$IP:$PORT  -z $size -t 1 -n 10000 -b 100 -d -1 -m cxipgdcx -ri 10 -j logs/hsbench-raw-$size.log
+            cat logs/hsbench-raw-$size.log | jq | grep TOTAL -A 8 > logs/hsbench-$size.log
+        done
 
-
-
-
-Next:
-    - Test latency of 1000 request!
-    - compare it to Faradawn's real storage_node deployment
-    - Modify Motr,
-        - recompile!
-    - Check the logs!!
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    
+        blockSizeArr=( "1M" "2M" "4M" "8M" "16M")
+        for size in "${blockSizeArr[@]}"
+        do
+            echo "$size"
+            ./hsbench -a $access_key -s $secret_key -u http://$IP:$PORT  -z $size -t 1 -n 2000 -b 100 -d -1 -m cxipgdcx -ri 10 -j logs/hsbench-raw-$size.log
+            cat logs/hsbench-raw-$size.log | jq | grep TOTAL -A 8 > logs/hsbench-$size.log
+        done
 
