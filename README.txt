@@ -210,10 +210,10 @@
     # Make sure that the exampleX.c is in the ORIGINAL form, otherwise, you can't run "make"
     # (7 min)
     cd /mnt/extra/cortx-motr
-    sudo ./autogen.sh && sudo ./configure && time sudo make -j48
+    sudo ./autogen.sh
 
     # Disable expensive checks 
-        # https://cortxcommunity.slack.com
+        # https://cortxcommunity.slack.com/archives/C019S0SGWNQ/p1607974535256000
         
         # sudo ./configure --disable-expensive-checks --disable-immediate-trace  --disable-dev-mode --with-trace-max-level=M0_ERROR
 
@@ -475,13 +475,12 @@
 11. Clone CORTX-bench-extra
     # Change the "daniarherikurniawan" with your github username
     # Set passwordless github push/pull 
-    git config --global user.email "ddhhkk2@gmail.com
+    git config --global user.email "ddhhkk2@gmail.com"
     git config --global user.name "daniarherikurniawan"
     git config --global credential.helper store         # store pass in ~/.git-credentials as plain text format.
 
     cd /mnt/extra 
-    git clone https://daniarherikurniawan@github.com
-        # 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      # GITHUB_SECRET; Tell DANIAR if you get this!!!
+    git clone https://daniarherikurniawan@github.com/daniarherikurniawan/cortx-bench-extra.git
     
     # Break the Copy here ====
 
@@ -729,7 +728,7 @@ TODO:
 
 # project ..849 @UC "Skylake"
 # based on Faradawn guides:
-    https://github.com
+    https://github.com/faradawn/tutorials/blob/main/linux/cortx/README.md
 
 # Create Reservation
     # https://chi.tacc.chameleoncloud.org/project/
@@ -815,7 +814,7 @@ TODO:
  
         # Break the Copy here ====
 
-        printf 'Y' | sh -c "$(wget -O- https://raw.githubusercontent.com
+        printf 'Y' | sh -c "$(wget -O- https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 
         /bin/cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc
         sudo sed -i 's|home/daniar:/bin/bash|home/daniar:/bin/zsh|g' /etc/passwd
@@ -966,11 +965,11 @@ EOF
 cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
-baseurl=https://packages.cloud.google.com
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
 enabled=1
 gpgcheck=1
 repo_gpgcheck=0
-gpgkey=https://packages.cloud.google.comrpm-package-key.gpg
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
 exclude=kubelet kubeadm kubectl
 EOF
 
@@ -988,7 +987,7 @@ EOF
 
     # download yq 
     cd /mnt/extra
-    wget https://github.com
+    wget https://github.com/mikefarah/yq/releases/download/v4.25.2/yq_linux_amd64.tar.gz -O - | tar xz 
     sudo mv yq_linux_amd64 /usr/bin/yq
 
     # edit kubeadm.conf
@@ -1018,7 +1017,7 @@ EOF
             # for multiple node is mandatory
             kubectl create -f https://projectcalico.docs.tigera.io/manifests/tigera-operator.yaml
             cd /mnt/extra
-            wget https://gist.githubusercontent.com5240ae7775c2fb74307/custom-resource.yaml
+            wget https://gist.githubusercontent.com/faradawn/2288618db8ad0059968f48b6647732f9/raw/133f7f5113b4bc76f06dd5240ae7775c2fb74307/custom-resource.yaml
             kubectl create -f custom-resource.yaml
         exit 
 
@@ -1039,7 +1038,7 @@ EOF
     
     # clone k8s repo and download solution.example.yaml
     cd /mnt/extra
-    git clone -b main https://github.com
+    git clone -b main https://github.com/Seagate/cortx-k8s
 
     # modify "solution.yaml" [MANUALLY]
         cd /mnt/extra/cortx-k8s/k8_cortx_cloud
@@ -1148,7 +1147,7 @@ EOF
     # Install s3bench
         cd /mnt/extra
         yum install -y go
-        wget https://github.com
+        wget https://github.com/Seagate/s3bench/releases/download/v2022-03-14/s3bench.2022-03-14
         chmod +x s3bench.2022-03-14 
         mv s3bench.2022-03-14 s3bench
 
@@ -1279,7 +1278,7 @@ EOF
  
         # Break the Copy here ====
 
-        printf 'Y' | sh -c "$(wget -O- https://raw.githubusercontent.com
+        printf 'Y' | sh -c "$(wget -O- https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 
         /bin/cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc
         sudo sed -i 's|home/daniar:/bin/bash|home/daniar:/bin/zsh|g' /etc/passwd
@@ -1303,7 +1302,7 @@ EOF
 
 
 2. Create XFS loop devices [[AFTER EACH REBOOT]]
-    # https://www.thegeekdiary.com
+    # https://www.thegeekdiary.com/how-to-create-virtual-block-device-loop-device-filesystem-in-linux/
     # If there is only 1 physical storage, you must create loop devices!
         # linux support block device called the loop device, which maps a normal file onto a virtual block device
 
@@ -1380,7 +1379,7 @@ EOF
             # "loop8" for log 
 
 2. Install Ceph 
-    # https://docs.ceph.com
+    # https://docs.ceph.com/en/mimic/start/quick-start-preflight/
 
     # dependencies
         # install subscription-manager
@@ -1397,11 +1396,11 @@ EOF
 cat <<EOF | sudo tee /etc/yum.repos.d/ceph.repo
 [ceph-noarch]
 name=Ceph noarch packages
-baseurl=https://download.ceph.com
+baseurl=https://download.ceph.com/rpm-luminous/el7/noarch
 enabled=1
 gpgcheck=1
 type=rpm-md
-gpgkey=https://download.ceph.com
+gpgkey=https://download.ceph.com/keys/release.asc
 EOF
 
     # Update your repository and install ceph-deploy:
@@ -1453,8 +1452,8 @@ EOF
 
 
 4. Ceph Deploy [On-MASTER]
-    # https://ralph.blog.imixs.com
-    # https://www.linuxtechi.com
+    # https://ralph.blog.imixs.com/2020/02/28/howto-install-ceph-on-centos-7/
+    # https://www.linuxtechi.com/install-configure-ceph-cluster-centos-7/
 
     sudo mkdir -p /mnt/extra/ceph_cluster
     cd /mnt/extra/ceph_cluster
@@ -1466,7 +1465,7 @@ EOF
         cat ceph.conf | grep mon_host
 
     # Patch [Run in EACH NODE]
-        # workaround: https://tracker.ceph.com
+        # workaround: https://tracker.ceph.com/issues/12694
         sudo mv /etc/yum.repos.d/ceph.repo /etc/yum.repos.d/ceph-deploy.repo
 
     # Install Ceph [in-SUDO]
@@ -1529,8 +1528,8 @@ EOF
     ceph-deploy osd create --data /dev/loop3 node-3
 
     # create pool 
-        # https://docs.ceph.com
-        # https://computingforgeeks.com
+        # https://docs.ceph.com/en/latest/rados/operations/pools/
+        # https://computingforgeeks.com/create-a-pool-in-ceph-storage-cluster/
             # replicated, not erasure
         sudo ceph osd pool create mypool 100 100 replicated
 
@@ -1554,9 +1553,9 @@ EOF
     sudo ceph health        # check after 30s, the cluster need time to check the clock skew
 
 6. Ceph Dashboard 
-    # https://ralph.blog.imixs.com
-    # Enable Dashboard: https://docs.ceph.com
-    # Works: https://stackoverflow.com
+    # https://ralph.blog.imixs.com/2020/02/28/howto-install-ceph-on-centos-7/
+    # Enable Dashboard: https://docs.ceph.com/en/quincy/mgr/dashboard/
+    # Works: https://stackoverflow.com/questions/55549420/
 
     cd /mnt/extra/ceph_cluster
     sudo ceph mgr module enable dashboard
@@ -1578,9 +1577,9 @@ EOF
 
 
 7. Start Rados Gateway (rgw)
-    # Just a sneak peek: https://www.youtube.com
-    # https://access.redhat.cominstallation_guide_for_red_hat_enterprise_linux/manually-installing-ceph-object-gateway
-    # https://docs.ceph.com
+    # Just a sneak peek: https://www.youtube.com/watch?v=6uX23Q3y_SU
+    # https://access.redhat.com/documentation/en-us/red_hat_ceph_storage/3/html/installation_guide_for_red_hat_enterprise_linux/manually-installing-ceph-object-gateway
+    # https://docs.ceph.com/en/mimic/start/quick-ceph-deploy/
 
     # install rgw daemon 
         sudo yum -y install ceph-radosgw
@@ -1630,7 +1629,7 @@ EOF
         sudo chown daniar /var/log/radosgw/
 
     # Start radosgw service
-        # https://tracker.ceph.com
+        # https://tracker.ceph.com/issues/24265 => becareful with the @xxxx
 
         sudo systemctl start ceph-radosgw@radosgw.node-1
         # sudo systemctl restart ceph-radosgw@radosgw.node-1
@@ -1643,7 +1642,7 @@ EOF
     # check status 
         curl node-1:8080
 
-            # <?xml version="1.0" encoding="UTF-8"?><ListAllMyBucketsResult xmlns="http://s3.amazonaws.comdoc/2006-03-01/"><Owner><ID>anonymous</ID><DisplayName></DisplayName></Owner><Buckets></Buckets></ListAllMyBucketsResult>%
+            # <?xml version="1.0" encoding="UTF-8"?><ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Owner><ID>anonymous</ID><DisplayName></DisplayName></Owner><Buckets></Buckets></ListAllMyBucketsResult>%
 
     # Port Forwarding [Run at LOCAL]
 
@@ -1651,7 +1650,7 @@ EOF
 
         # visit this at local: http://localhost:8888/
 
-            # <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com
+            # <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
             #    <Owner>
             #        <ID>anonymous</ID>
             #        <DisplayName/>
@@ -1661,7 +1660,7 @@ EOF
 
 
 8. Prepare Credentials (S3 interface)
-    # https://access.redhat.comceph_object_gateway_for_centos_x86_64/index
+    # https://access.redhat.com/documentation/en-us/red_hat_ceph_storage/1.2.3/html-single/ceph_object_gateway_for_centos_x86_64/index
     
     # Create a radosgw user for S3 access
         sudo radosgw-admin user create --uid="testuser" --display-name="First User"
@@ -1741,13 +1740,12 @@ EOF
     # Change the "daniarherikurniawan" with your github username
     # Set passwordless github push/pull 
     cd /mnt/extra
-    git config --global user.email "ddhhkk2@gmail.com
+    git config --global user.email "ddhhkk2@gmail.com"
     git config --global user.name "daniarherikurniawan"
     git config --global credential.helper store         # store pass in ~/.git-credentials as plain text format.
 
     cd /mnt/extra 
     git clone https://daniarherikurniawan@github.com
-        # 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      # GITHUB_SECRET; Tell DANIAR if you get this!!!
     
     # Run clear cache loop  
     cd /mnt/extra/cortx-bench-extra/script  
@@ -1757,7 +1755,7 @@ EOF
 10. Benchmark Ceph using S3bench
     
     # Install s3bench
-        # https://github.com
+        # https://github.com/markhpc/hsbench
 
         sudo yum -y install jq
         sudo yum install -y go
@@ -1768,15 +1766,15 @@ EOF
             # GOPATH="/root/go"
 
         which go
-        sudo go install github.com
+        sudo go install github.com/aws/aws-sdk-go@latest
         sudo find / -type d -name 'aws-sdk-go'
-            # /root/go/pkg/mod/cache/download/github.com
+            # /root/go/pkg/mod/cache/download/github.com/aws/aws-sdk-go
 
         # Install hsbench
-            # https://medium.com-is-deprecated-de3a30439596
-        sudo go install github.com
+            # https://medium.com/@sherlock297/go-get-installing-executables-with-go-get-in-module-mode-is-deprecated-de3a30439596
+        sudo go install github.com/markhpc/hsbench@latest 
         sudo find / -name 'hsbench'
-            # /root/go/pkg/mod/cache/download/github.com
+            # /root/go/pkg/mod/cache/download/github.com/markhpc/hsbench
         
         sudo ls /root/go/bin
             # hsbench
