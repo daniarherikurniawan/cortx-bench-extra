@@ -1745,7 +1745,7 @@ EOF
     git config --global credential.helper store         # store pass in ~/.git-credentials as plain text format.
 
     cd /mnt/extra 
-    git clone https://daniarherikurniawan@github.com
+    git clone https://daniarherikurniawan@github.com/daniarherikurniawan/cortx-bench-extra.git
     
     # Run clear cache loop  
     cd /mnt/extra/cortx-bench-extra/script  
