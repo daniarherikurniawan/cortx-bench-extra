@@ -2,10 +2,62 @@
 "
 "
 ========================================================================================
+                            Create Chameleon Trovi (1 node)
+========================================================================================
+
+0. Guideline 
+    # https://chameleoncloud.readthedocs.io/en/latest/technical/sharing.html
+    # BEST: https://chameleoncloud.readthedocs.io/en/latest/technical/sharing.html#packaging-shared-artifacts
+        # Forking
+            # click on the “Share” tab and select “Package as a new artifact”. 
+
+1. Homepage
+    # Visit: https://www.chameleoncloud.org/experiment/share/
+    # Open one of the existing trovi, e.g. FIO test 
+    # Open Hub Control Panel 
+        # https://jupyter.chameleoncloud.org/user/daniar.h.k@gmail.com/lab?redirects=1
+        # Click "Start my Server" 
+            # Server name       URL                                         Last activity           Actions
+            # test-cortx-motr   /user/daniar.h.k@gmail.com/test-cortx-motr  a few seconds ago   
+
+        # CLick the URL!!
+        # You will see these:
+            notebooks/
+            Welcome.ipynb
+
+    # Create your own ipynb!
+        # Click the "+" sign, color blue left upper corner
+        # Click "Notebook" ==> "Bash"
+            # Don't pick "Python 3 (ipykernel)" because the cell will be a python console
+        # Rename the file "CORTX-Motr.ipynb"
+
+    # Create a folder "CORTX-Motr/"
+        # Drag the CORTX-Motr.ipynb into this folder
+        # We need this folder so that we can click "Share" -> "Package as a new artifact"
+            # Otherwise, the "Package as a new artifact" will be grayed out (unclickable)
+
+    # Start adding columns/cell 
+        # Two types: "Code" or "Markdown"
+
+    # Publish the artifact 
+        # Click the folder "CORTX-Motr/"
+        # Click "Share" -> "Package as a new artifact"
+
+2. BUGS/ERRORs 
+    
+    # Calling "openstack keypair list "
+        # https://jupyter.chameleoncloud.org/user/daniar.h.k@gmail.com/test-cortx-motr/lab/workspaces/auto-G/tree/notebooks/tutorials/getting-started/JupyterOrchestration.ipynb
+        # got: Unexpected exception for http://:5000/v3/OS-FEDERATION/identity_providers/chameleon/protocols/openid/auth: Invalid URL 'http://:5000/v3/OS-FEDERATION/identity_providers/chameleon/protocols/openid/auth': No host supplied
+
+
+"
+"
+========================================================================================
                         Run a Single Node CORTX-Motr (Loops)
 ========================================================================================
 
 # project ..849 @UC "Skylake"
+    # @TACC is better, faster network speed 
 # based on Faradawn guides:
     https://github.com/faradawn/tutorials/blob/main/linux/cortx/motr_guide.md
 
@@ -158,15 +210,22 @@
     # Make sure that the exampleX.c is in the ORIGINAL form, otherwise, you can't run "make"
     # (7 min)
     cd /mnt/extra/cortx-motr
-    sudo ./autogen.sh 
+    sudo ./autogen.sh && sudo ./configure && time sudo make -j48
 
     # Disable expensive checks 
-        # https://cortxcommunity.slack.com/archives/C019S0SGWNQ/p1607974535256000
+        # https://cortxcommunity.slack.com
         
-        sudo ./configure --disable-expensive-checks --disable-immediate-trace  --disable-dev-mode --with-trace-max-level=M0_ERROR
-        
-        # ./configure --with-trace-max-level=M0_INFO
+        # sudo ./configure --disable-expensive-checks --disable-immediate-trace  --disable-dev-mode --with-trace-max-level=M0_ERROR
+
+        # for bottleneck analysis
+        sudo ./configure --with-trace-max-level=M0_DEBUG
         # ./configure --help | grep trace
+            #   --with-trace-max-level=<M0_ALWAYS|M0_FATAL|M0_ERROR|M0_WARN|M0_NOTICE|M0_INFO|M0_DEBUG>
+            #      set highest trace level that will be enabled, all
+            #      levels with verbosity above that will not be logged
+        # LOG_LEVEL: 4               # err(0), warn(1), info(2), trace(3), debug(4)
+            # /mnt/extra/cortx-motr/dtm0/it/all2all/m0crate.yaml.in
+
 
     cd /mnt/extra/cortx-motr
     sudo make -j48
@@ -182,8 +241,9 @@
     sudo pip3 install -r https://raw.githubusercontent.com/Seagate/cortx-utils/main/py-utils/python_requirements.txt
     sudo pip3 install -r https://raw.githubusercontent.com/Seagate/cortx-utils/main/py-utils/python_requirements.ext.txt
     
-    cd /mnt/extra/py-utils/dist
+    cd /mnt/extra/cortx-utils/py-utils/dist
     sudo yum install -y cortx-py-utils-*.noarch.rpm
+    # sudo find . -type f -name '*noarch.rpm'
 
 6. Building Hare 
     
@@ -213,13 +273,14 @@
     # create hare group
     sudo groupadd --force hare
     sudo usermod --append --groups hare $USER
+    sudo su
 
     # add path to zsh
     echo 'PATH=/opt/seagate/cortx/hare/bin:$PATH' >> ~/.zshrc
     echo 'export LD_LIBRARY_PATH=/mnt/extra/cortx-motr/motr/.libs/' >> ~/.zshrc
     source ~/.zshrc
     
-7. Create loop devices [[AFTER EACH REBOOT]]
+8. Create loop devices [[AFTER EACH REBOOT]]
     # https://www.thegeekdiary.com/how-to-create-virtual-block-device-loop-device-filesystem-in-linux/
     # If there is only 1 physical storage, you must create loop devices!
         # linux support block device called the loop device, which maps a normal file onto a virtual block device
@@ -312,7 +373,7 @@
 
     sudo lctl list_nids
 
-        # sample output: 10.140.81.147@tcp
+        # sample output: 10.52.0.167@tcp
 
 9. Start a Hare cluster
 
@@ -342,13 +403,49 @@
             cat CDF.yaml| grep hostname
             cat CDF.yaml| grep node:            # only 3 loop devices 
 
+            # Sample final CDF:
+                #nodes:
+                #  - hostname: node-1.novalocal     # [user@]hostname
+                #    node_group: localhost
+                #    data_iface: eth0        # name of data network interface
+                #    data_iface_ip_addr: null
+                #    transport_type: libfab
+                #    m0_servers:
+                #      - runs_confd: true
+                #        io_disks:
+                #          data: []
+                #          log: []
+                #          meta_data: null
+                #      - runs_confd: null
+                #        io_disks:
+                #          data:
+                #            - path: /dev/loop5
+                #            - path: /dev/loop6
+                #            - path: /dev/loop7
+                #          log:
+                #            - path: /dev/loop8
+                #          meta_data: null
+                #    m0_clients:
+                #      - name: m0_client_other  # name of the motr client
+                #        instances: 2   # Number of instances, this host will run
+                #create_aux: false # optional; supported values: "false" (default), "true"
+                #pools:
+                #  - name: the pool
+                #    type: sns  # optional; supported values: "sns" (default), "dix", "md"
+                #    disk_refs:
+                #      - { path: /dev/loop5, node: node-1.novalocal }
+                #      - { path: /dev/loop6, node: node-1.novalocal }
+                #      - { path: /dev/loop7, node: node-1.novalocal }
+                #    data_units: 1
+                #    parity_units: 0
+                #    spare_units: 0
+
     # bootstrap (0.5 min)
         cd /mnt/extra
         sudo hctl bootstrap --mkfs CDF.yaml
         hctl status
         
-        # cd /mnt/extra
-        # sudo hctl shutdown; sudo hctl bootstrap --mkfs CDF.yaml
+        # cd /mnt/extra; sudo hctl shutdown; sudo hctl bootstrap --mkfs CDF.yaml
 
     # check status
         hctl status
@@ -362,31 +459,34 @@
                 0x7000000000000001:0x0 'default': 'the pool' None None
             Services:
                 dan-cortx.novalocal  (RC)
-                [started]  hax                 0x7200000000000001:0x0          inet:tcp:10.140.81.147@22001
-                [started]  confd               0x7200000000000001:0x1          inet:tcp:10.140.81.147@21002
-                [started]  ioservice           0x7200000000000001:0x2          inet:tcp:10.140.81.147@21003
-                [unknown]  m0_client_other     0x7200000000000001:0x3          inet:tcp:10.140.81.147@22501
-                [unknown]  m0_client_other     0x7200000000000001:0x4          inet:tcp:10.140.81.147@22502
+                [started]  hax                 0x7200000000000001:0x0          inet:tcp:10.52.0.167@22001
+                [started]  confd               0x7200000000000001:0x1          inet:tcp:10.52.0.167@21002
+                [started]  ioservice           0x7200000000000001:0x2          inet:tcp:10.52.0.167@21003
+                [unknown]  m0_client_other     0x7200000000000001:0x3          inet:tcp:10.52.0.167@22501
+                [unknown]  m0_client_other     0x7200000000000001:0x4          inet:tcp:10.52.0.167@22502
 
 10. Connect VSCode ssh 
     # Use the "remote explorer" package to establish remote editor
     # Open the /mnt/extra 
+    # IMPORTANT: The #12 Clear cache loop must be run via VSCode!
     # Need this to inspect the CDF file, make sure it looks good
     # Also for modifying the motr source code
 
 11. Clone CORTX-bench-extra
     # Change the "daniarherikurniawan" with your github username
     # Set passwordless github push/pull 
-    git config --global user.email "ddhhkk2@gmail.com"
+    git config --global user.email "ddhhkk2@gmail.com
     git config --global user.name "daniarherikurniawan"
     git config --global credential.helper store         # store pass in ~/.git-credentials as plain text format.
 
     cd /mnt/extra 
-    git clone https://daniarherikurniawan@github.com/daniarherikurniawan/cortx-bench-extra.git
+    git clone https://daniarherikurniawan@github.com
+        # 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      # GITHUB_SECRET; Tell DANIAR if you get this!!!
     
-    # copy Motr sample client 
+    # Break the Copy here ====
+
     cd /mnt/extra/
-    cp cortx-bench-extra/motr-clients/*  cortx-motr/motr/examples/
+    cp cortx-bench-extra/motr-clients/*  cortx-motr/motr/examples/      # copy Motr sample client 
     cp -r cortx-bench-extra/script  cortx-motr/motr/examples/
 
 12. Run Clear Cache loop  
@@ -402,7 +502,8 @@
     # example1.c [default client]
         cd /mnt/extra/cortx-motr/motr/examples
         gcc -I/mnt/extra/cortx-motr -DM0_EXTERN=extern -DM0_INTERNAL= -Wno-attributes -L/mnt/extra/cortx-motr/motr/.libs -lmotr example1.c -o example1
-        ./example1 inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670
+        ./example1 inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670
+        #                                                                         mc_profile              mc_process_fid
 
     # example1_dan.c 
 
@@ -410,9 +511,10 @@
 
             #!/usr/bin/env bash
 
-            ./script/modify_param.py -file /mnt/extra/cortx-motr/motr/examples/example1_dan.c -params "N_REQUEST=2000 BLOCK_SIZE=16777216"
+            cd /mnt/extra/cortx-motr/motr/examples
+            ./script/modify_param.py -file /mnt/extra/cortx-motr/motr/examples/example1_dan.c -params "N_REQUEST=200 BLOCK_SIZE=32768"
             gcc -I/mnt/extra/cortx-motr -DM0_EXTERN=extern -DM0_INTERNAL= -Wno-attributes -L/mnt/extra/cortx-motr/motr/.libs -lmotr example1_dan.c -o example1_dan
-            ./example1_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670
+            ./example1_dan inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670
 
             # delete the m0trace
             rm -rf m0trace*
@@ -426,24 +528,25 @@
                 echo "$blockSize"
                 ./script/modify_param.py -file /mnt/extra/cortx-motr/motr/examples/example1_dan.c -params "N_REQUEST=20000 BLOCK_SIZE=$blockSize"
                 gcc -I/mnt/extra/cortx-motr -DM0_EXTERN=extern -DM0_INTERNAL= -Wno-attributes -L/mnt/extra/cortx-motr/motr/.libs -lmotr example1_dan.c -o example1_dan
-                ./example1_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670
+                ./example1_dan inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670
                 rm -rf m0trace*     # don't run this line if you will use ADDB
             done
 
 
 12. Run Multi Threaded Client [USE-THIS]
     
+    # restart cluster if needed: cd /mnt/extra; sudo hctl shutdown; sudo hctl bootstrap --mkfs CDF.yaml
+
     # Write/Read/Delete
     #   1  /  1 /   1
 
-    
     cd /mnt/extra/cortx-motr/motr/examples
-    ./script/modify_param.py -file /mnt/extra/cortx-motr/motr/examples/example1_multithd_dan.c -params "N_REQUEST=1000 BLOCK_SIZE=16777216 N_PARALLEL_THD=1"
+    ./script/modify_param.py -file /mnt/extra/cortx-motr/motr/examples/example1_multithd_dan.c -params "N_REQUEST=100 BLOCK_SIZE=1048576 N_PARALLEL_THD=1"
     gcc -I/mnt/extra/cortx-motr -DM0_EXTERN=extern -DM0_INTERNAL= -Wno-attributes -L/mnt/extra/cortx-motr/motr/.libs -lmotr -lpthread example1_multithd_dan.c -o example1_multithd_dan
 
-    ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 1 0 0 
-    ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 0 1 0 
-    ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 0 0 1 
+    ./example1_multithd_dan inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 1 0 0 
+    ./example1_multithd_dan inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 0 1 0 
+    ./example1_multithd_dan inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 0 0 1 
 
     # Benchmark type-A
         # "4096" "8192" "16384" "32768" "65536" "131072" "262144" "524288" "1048576" "2097152" "4194304" "8388608" "16777216"
@@ -455,9 +558,9 @@
             echo "$blockSize"
             ./script/modify_param.py -file /mnt/extra/cortx-motr/motr/examples/example1_multithd_dan.c -params "N_REQUEST=20000 BLOCK_SIZE=$blockSize"
             gcc -I/mnt/extra/cortx-motr -DM0_EXTERN=extern -DM0_INTERNAL= -Wno-attributes -L/mnt/extra/cortx-motr/motr/.libs -lmotr -lpthread example1_multithd_dan.c -o example1_multithd_dan
-            ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 1 0 0 
-            ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 0 1 0 
-            ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 0 0 1 
+            ./example1_multithd_dan inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 1 0 0 
+            ./example1_multithd_dan inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 0 1 0 
+            ./example1_multithd_dan inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 0 0 1 
             rm -rf m0trace*     # don't run this line if you will use ADDB
         done
 
@@ -470,20 +573,163 @@
             echo "$blockSize"
             ./script/modify_param.py -file /mnt/extra/cortx-motr/motr/examples/example1_multithd_dan.c -params "N_REQUEST=20000 BLOCK_SIZE=$blockSize"
             gcc -I/mnt/extra/cortx-motr -DM0_EXTERN=extern -DM0_INTERNAL= -Wno-attributes -L/mnt/extra/cortx-motr/motr/.libs -lmotr -lpthread example1_multithd_dan.c -o example1_multithd_dan
-            ./example1_multithd_dan inet:tcp:10.140.81.147@22001 inet:tcp:10.140.81.147@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 1 1 1
+            ./example1_multithd_dan inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670 1 1 1
             rm -rf m0trace*     # don't run this line if you will use ADDB
         done
 
+"
+"
+========================================================================================
+                            Run ADDB on M0trace output
+========================================================================================
+# Faradawn Notes: https://docs.google.com/document/d/1YVZsuJtXyGPnhZ66C-cdzSopaLo_WHjgyb74-BZ-FWM/edit
+# Keywords to search on Slack: "m0trace", "m0addb2dump", "addb"
+    # slack: 
+        # Philippe Daniel + Andriy + Anatoliy : https://cortxcommunity.slack.com
+            # Anatoliy: "CORTX Observability with Anatoily Bilenko" https://www.youtube.com/watch?v=FFTi2XNFb7A
+                # Good for paper intro of addb 
+    # addb2 primer: https://github.com/Seagate/cortx-motr/blob/main/doc/addb2-primer
+    # happy-path demo: https://github.com/Seagate/cortx-motr/blob/documentation/doc/dev/dtm/dtm0-demo-happy-path.org#integration-test
+    # github:
+        # https://github.com.org#integration-test
+            # Integration test -> integrate addb stobs
+
+0. Preparation
+    # Follow Motr deployment tutorial (e.g "Run a Single Node CORTX-Motr (Loops)")
+    # Run the client 
+        # Get the m0trace.* output "m0trace.392531.2022-07-26-17:21:51"
+
+1. Enable ADDB
+    # set configure motr to allow all logs (INFO) level 
+    # recompile motr  
+    # Put in the client.c: "motr_conf.mc_is_addb_init     = true;"     # Enable ADDB
+    # recompile client 
+    # restart hare cluster 
+    # then run client and make sure you have the m0trace.* files 
+
+1. Prepare ADDB Trace  
+
+    # Flatten out the m0trace raw file 
+        cd /mnt/extra/cortx-motr/utils/trace/
+        filename="m0trace.749269.2022-07-26-20:38:45"
+        sudo ./m0trace -i /mnt/extra/cortx-motr/motr/examples/$filename > $filename.log
+            
+            # sudo find / -name 'm0tracedump'
+            # sudo find / -name 'm0trace'
+            # Don't use: m0tracedump, m0kdump2trace, m0addb2dump, or m0traced! Got many errors 
+            
+            # sudo ./m0tracedump -i /mnt/extra/cortx-motr/motr/examples/$filename 
+    
+            # similar trace
+                # sudo ./m0tracedump -i /var/motr/m0d-0x7200000000000001:0x1/m0trace.733173.2022-07-26-20:29:41 > test.log
+                # sudo ./m0tracedump -i /mnt/extra/cortx-motr/motr/examples/m0trace.749269.2022-07-26-20:38:45 > test2.log
+
+    # check log at "cd /var/log/seagate"
+        # only find "hare/", no "motr/" ??!!! Motr is at /var/motr/
+
+    # try m0t1fs [No-NEED]
+        # sudo find / -name 'm0t1fs'
+            # /mnt/extra/cortx-motr/st/m0t1fs
+        # cd /mnt/extra/cortx-motr/
+        # sudo ./m0t1fs/linux_kernel/st/m0t1fs_test.sh
+
+2. Check ADDB Stobs 
+    # https://github.com
+    # the output are generated at /var/motr/
+
+    ls /var/motr/ | grep m0d
+        # m0d-0x7200000000000001:0x1
+        # m0d-0x7200000000000001:0x2
+
+
+        # at m0d-0x7200000000000001:0x1/
+            # addb-stobs-937576
+            # addb-stobs-938420
+            # m0trace.937576.2022-07-26-22:34:01
+            # m0trace.938420.2022-07-26-22:34:10
+        # at m0d-0x7200000000000001:0x2/
+            ....
+
+    # Clearing old ADDB stubs [If-Needed]
+        # The m0d-0x7200000000000001:0x1/ and m0d-0x7200000000000001:0x2/ must be cleared after analyzing the client run 
+        # otherwise the folder-naming will not reflect the lastest running time
+        # although, the trace generated at /motr/examples are always up to date with the running time
+
+        rm -rf /var/motr/m0d-0x7200000000000001:0x1
+        rm -rf /var/motr/m0d-0x7200000000000001:0x2
+            # Then, rerun the client!
+
+    # Dump addb samples
+        cd /mnt/extra/cortx-motr/utils/
+        sudo ./m0addb2dump -f -- /var/motr/m0d-0x7200000000000001\:0x1/addb-stobs/o/100000000000000\:2 >  dump_1.txt
 
 
 
+
+
+"
+"
+TODO:
+    - How come m0t1fs_test.sh can generate stobs????
+        - What config that I missed??
+        /mnt/extra/cortx-motr/m0t1fs/linux_kernel/st/m0t1fs_test.sh
+
+    - Run CORTX-k8 and try to get stobs or get the m0trace !!
+
+
+
+
+
+
+
+    # dump addb samples
+    ./motr/utils/m0addb2dump -f -- /var/motr/m0d-0x7200000000000001\:0xc/addb-stobs/o/100000000000000\:2 >  dump_c.txt
+    ./motr/utils/m0addb2dump -f -- /var/motr/m0d-0x7200000000000001\:0x1a/addb-stobs/o/100000000000000\:2 > dump_1a.txt
+    ./motr/utils/m0addb2dump -f -- /var/motr/m0d-0x7200000000000001\:0x28/addb-stobs/o/100000000000000\:2 > dump_28.txt
+    ./motr/utils/m0addb2dump -f -- /var/motr/m0d-0x7200000000000001\:0x9/addb-stobs/o/100000000000000\:2 >  dump_9.txt
+    ./motr/utils/m0addb2dump -f -- client_addb_17730/o/100000000000000:2 > dumpc_26568.txt
+
+    # generate the db
+    git clone --recursive git@github.com
+    ln -s seagate-tools/performance/PerfLine/roles/perfline_setup/files/chronometry_v2 chronometry_v2
+    cp dump[cs]*.txt chronometry_v2 && cd chronometry_v2
+    python3 addb2db.py --dumps dump[cs]_*.txt --db m0play.db.a2a
+
+    # look at request diagrams
+    python3 req_timelines.py -d m0play.db.a2a -p 26568 1777
+
+
+
+
+
+2. Put inside DB 
+    
+    m0play.db 
+    /mnt/extra/cortx-motr/scripts/addb-py/chronometry/addb2db.py
+
+    Chronometry 
+
+
+
+
+
+
+
+
+
+
+
+
+
+"
+"
 ========================================================================================
                         Run a Single Node CORTX-K8 (Loops)
 ========================================================================================
 
 # project ..849 @UC "Skylake"
 # based on Faradawn guides:
-    https://github.com/faradawn/tutorials/blob/main/linux/cortx/README.md
+    https://github.com
 
 # Create Reservation
     # https://chi.tacc.chameleoncloud.org/project/
@@ -569,7 +815,7 @@
  
         # Break the Copy here ====
 
-        printf 'Y' | sh -c "$(wget -O- https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+        printf 'Y' | sh -c "$(wget -O- https://raw.githubusercontent.com
 
         /bin/cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc
         sudo sed -i 's|home/daniar:/bin/bash|home/daniar:/bin/zsh|g' /etc/passwd
@@ -591,16 +837,91 @@
             ssh $ip "cd ~/.ssh/; cat id_rsa.pub >> authorized_keys; echo 'StrictHostKeyChecking no' > config; chmod go-rw config"
         done
 
+2. Create loop devices [[AFTER EACH REBOOT]]
+    # https://www.thegeekdiary.com
+    # If there is only 1 physical storage, you must create loop devices!
+        # linux support block device called the loop device, which maps a normal file onto a virtual block device
 
-2. Install Kubernetes
+    # Create a file (25 GB each)
+
+        mkdir -p /mnt/extra/loop-files/
+        cd /mnt/extra/loop-files/
+        dd if=/dev/zero of=loopbackfile1.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile2.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile3.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile4.img bs=100M count=250
+        dd if=/dev/zero of=loopbackfile5.img bs=100M count=250
+        
+        # check size 
+        # du -sh loopbackfile1.img 
+
+            # 1048576000 bytes (1.0 GB) copied, 0.723784 s, 1.4 GB/s
+            # 1001M loopbackfile1.img
+
+    # Create the loop device
+        cd /mnt/extra/loop-files/
+        sudo losetup -fP loopbackfile1.img
+        sudo losetup -fP loopbackfile2.img
+        sudo losetup -fP loopbackfile3.img
+        sudo losetup -fP loopbackfile4.img
+        sudo losetup -fP loopbackfile5.img
+
+    # print loop devices 
+        losetup -a
+            # /dev/loop0: []: (/mnt/extra/loop-files/loopbackfile1.img)
+            # /dev/loop1: []: (/mnt/extra/loop-files/loopbackfile2.img)
+            # /dev/loop2: []: (/mnt/extra/loop-files/loopbackfile3.img)
+
+    # Format devices into filesystems 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile1.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile2.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile3.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile4.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile5.img 
+        lsblk -f
+
+    # mount loop devices
+
+        # mkdir -p /mnt/extra/loop-devs/loop0
+        # mkdir -p /mnt/extra/loop-devs/loop1
+        # mkdir -p /mnt/extra/loop-devs/loop2
+        # mkdir -p /mnt/extra/loop-devs/loop3
+        # mkdir -p /mnt/extra/loop-devs/loop4
+        # cd /mnt/extra/loop-devs/
+        # sudo mount -o loop /dev/loop0 /mnt/extra/loop-devs/loop0
+        # sudo mount -o loop /dev/loop1 /mnt/extra/loop-devs/loop1
+        # sudo mount -o loop /dev/loop2 /mnt/extra/loop-devs/loop2
+        # sudo mount -o loop /dev/loop3 /mnt/extra/loop-devs/loop3
+        # sudo mount -o loop /dev/loop4 /mnt/extra/loop-devs/loop4
+        lsblk -f
+        df -h 
+
+        # remove loop devs [No-NEED]
+            # sudo umount /mnt/extra/loop-devs/loop0
+            # sudo umount /mnt/extra/loop-devs/loop1
+            # sudo umount /mnt/extra/loop-devs/loop2
+            # sudo umount /mnt/extra/loop-devs/loop3
+            # sudo umount /mnt/extra/loop-devs/loop4
+            # sudo losetup -d /dev/loop0
+            # sudo losetup -d /dev/loop1
+            # sudo losetup -d /dev/loop2
+            # sudo losetup -d /dev/loop3
+            # sudo losetup -d /dev/loop4
+            # rm -rf /mnt/extra/loop-files/*.img
+
+        # check using "lsblk"
+            # we will use "loop5" "loop6" "loop7" for Motr 
+            # "loop8" for log 
+
+
+3. Install Kubernetes
     
     sudo mkdir -p /mnt/extra
     sudo chown daniar -R /mnt
     cd /mnt/extra
 
-
     # edit the hosts' IP
-    sudo bash -c "echo 10.140.81.147 `hostname` >> /etc/hosts"
+    sudo bash -c "echo 10.52.0.167 `hostname` >> /etc/hosts"
 
     # disable firewall
     sudo ufw disable
@@ -645,11 +966,11 @@ EOF
 cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
-baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+baseurl=https://packages.cloud.google.com
 enabled=1
 gpgcheck=1
 repo_gpgcheck=0
-gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+gpgkey=https://packages.cloud.google.comrpm-package-key.gpg
 exclude=kubelet kubeadm kubectl
 EOF
 
@@ -667,7 +988,7 @@ EOF
 
     # download yq 
     cd /mnt/extra
-    wget https://github.com/mikefarah/yq/releases/download/v4.25.2/yq_linux_amd64.tar.gz -O - | tar xz 
+    wget https://github.com
     sudo mv yq_linux_amd64 /usr/bin/yq
 
     # edit kubeadm.conf
@@ -697,7 +1018,7 @@ EOF
             # for multiple node is mandatory
             kubectl create -f https://projectcalico.docs.tigera.io/manifests/tigera-operator.yaml
             cd /mnt/extra
-            wget https://gist.githubusercontent.com/faradawn/2288618db8ad0059968f48b6647732f9/raw/133f7f5113b4bc76f06dd5240ae7775c2fb74307/custom-resource.yaml
+            wget https://gist.githubusercontent.com5240ae7775c2fb74307/custom-resource.yaml
             kubectl create -f custom-resource.yaml
         exit 
 
@@ -711,14 +1032,16 @@ EOF
 
     # check whether it is installed
     sudo kubectl get nodes
+        # NAME                 STATUS   ROLES           AGE   VERSION
+        # cortx-k8.novalocal   Ready    control-plane   5s    v1.24.0
 
-3. Deploy CORTX to kubernetes
+4. Deploy CORTX to kubernetes
     
     # clone k8s repo and download solution.example.yaml
     cd /mnt/extra
-    git clone -b main https://github.com/Seagate/cortx-k8s
+    git clone -b main https://github.com
 
-    # modify "solution.yaml" 
+    # modify "solution.yaml" [MANUALLY]
         cd /mnt/extra/cortx-k8s/k8_cortx_cloud
         sudo sed -i 's|csm_mgmt_admin_secret: null|csm_mgmt_admin_secret: Cortx123\!|g' solution.example.yaml
         
@@ -730,24 +1053,24 @@ EOF
                 # then delete other nodes 
 
             # 2. Only use 1 CVG! (otherwise it failed on "deploy-cortx-cloud")
+                # delete other CVG
                 # storage:
                     # cvg1 
 
             # 3. Search for "?sd"
-                # we will use "dev/loop4" "dev/loop5" "dev/loop6" "dev/loop7" for Motr 
+                # we will use "dev/loop0" "dev/loop1" "dev/loop2" "dev/loop3" for Motr 
                 # make sure that those devices existed, otherwise follow "Create loop devices"
                 # Changes the sdc to loop4 and so on!
                     # svg1 uses "dev/loop4" "dev/loop5"
-                    # svg2 uses "dev/loop6" "dev/loop7"
                     # size is 25Gi 
                     # remove other sd* 
 
         mv solution.example.yaml solution.yaml
-    
+        cat solution.yaml | grep "loop"
 
     # Run prerequisite [After each shutdown]
     cd /mnt/extra/cortx-k8s/k8_cortx_cloud
-    sudo ./prereq-deploy-cortx-cloud.sh -d /dev/loop8 -s solution.yaml
+    sudo ./prereq-deploy-cortx-cloud.sh -d /dev/loop4 -s solution.yaml
 
         # check the provisioner is mounted or not
         lsblk -f | grep "/mnt/fs-local-volume"
@@ -755,14 +1078,14 @@ EOF
 
     sudo su
         # untaint master [run-once]
-            kubectl taint node `hostname` node-role.kubernetes.io/master:NoSchedule-
-            kubectl taint node `hostname` node-role.kubernetes.io/control-plane:NoSchedule-
+            kubectl taint node `hostname -s` node-role.kubernetes.io/master:NoSchedule-
+            kubectl taint node `hostname -s` node-role.kubernetes.io/control-plane:NoSchedule-
 
         # restart core-dns pods [run-once]
         kubectl rollout restart -n kube-system deployment/coredns
 
-        # START k8 deployment [10 mins]
-        time ./deploy-cortx-cloud.sh solution.yaml
+        # START k8 deployment [10 mins]     # Need a steady ssh connection!!
+        time ./deploy-cortx-cloud.sh solution.yaml          # Run this within VSCODE terminal!!!
     exit
 
     # Shutdown/reset 
@@ -770,24 +1093,24 @@ EOF
         # sudo ./destroy-cortx-cloud.sh
         # sudo umount /mnt/fs-local-volume
 
-4. Establish CORTX-K8 Credential [in-SUDO]
+5. Establish CORTX-K8 Credential [in-SUDO]
     # Do this after each k8 restart 
     
     sudo su 
 
     # login to CSM to get the Bearer token 
     export CSM_IP=`kubectl get svc cortx-control-loadbal-svc -ojsonpath='{.spec.clusterIP}'`
+    echo $CSM_IP
 
     tok=$(curl -d '{"username": "cortxadmin", "password": "Cortx123!"}' https://$CSM_IP:8081/api/v2/login -k -i | grep -Po '(?<=Authorization: )\w* \w*') && echo $tok
         # Bearer 936b8c4d8756421682fdb059eec75c4b
-
     # create and check IAM user
     curl -X POST -H "Authorization: $tok" -d '{ "uid": "12345678", "display_name": "gts3account", "access_key": "gregoryaccesskey", "secret_key": "gregorysecretkey" }' https://$CSM_IP:8081/api/v2/iam/users -k
 
     curl -H "Authorization: $tok" https://$CSM_IP:8081/api/v2/iam/users/12345678 -k -i | grep "user_id"
         # {"tenant": "", "user_id": "12345678", ....
 
-5. Install aws cli [No-NEED]
+6. Install aws cli [No-NEED]
 
     # comparable to MinIO interface
     pip3 install awscli awscli-plugin-endpoint
@@ -810,7 +1133,7 @@ EOF
     aws s3 rb s3://test-bucket --endpoint-url http://$IP:$PORT
     aws s3 ls --endpoint-url http://$IP:$PORT
 
-6. Run Clear Cache loop  
+7. Run Clear Cache loop  
     # Run this in the VSCode terminal, otherwise the process will terminate easily
     # Background Task [On other terminal]
     # keep this script running while benchmarking 
@@ -818,21 +1141,21 @@ EOF
     cd /mnt/extra/cortx-motr/motr/examples/script/
     sudo ./free_page_cache.sh 0.25
 
-7. S3 Benchmark CORTX-K8  [in-SUDO]
+8. S3 Benchmark CORTX-K8  [in-SUDO]
     
     sudo su
 
     # Install s3bench
         cd /mnt/extra
         yum install -y go
-        wget https://github.com/Seagate/s3bench/releases/download/v2022-03-14/s3bench.2022-03-14
+        wget https://github.com
         chmod +x s3bench.2022-03-14 
         mv s3bench.2022-03-14 s3bench
 
     # Run benchmark
 
         IP=`ifconfig | grep "inet 192" | awk '{print $2}'`
-        PORT=`kubectl describe svc cortx-io-svc-0 | grep "rgw-http  " | grep "NodePort" | grep -o -E '[0-9]+'`
+        PORT=`kubectl describe svc | grep "rgw-http  " | grep "NodePort" | grep -o -E '[0-9]+'`
         echo $IP:$PORT 
 
         cd /mnt/extra
@@ -852,7 +1175,7 @@ EOF
         # 1. panic: Failed to create bucket: InvalidAccessKeyId
             # Solution: Follow the "Establish CORTX-K8 Credential"
 
-8. Download all the logs 
+9. Download all the logs 
     # Download logs / scp logs download the logs to local
 
     log_dir="cortx-k8-s3bench-v0"
@@ -956,7 +1279,7 @@ EOF
  
         # Break the Copy here ====
 
-        printf 'Y' | sh -c "$(wget -O- https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+        printf 'Y' | sh -c "$(wget -O- https://raw.githubusercontent.com
 
         /bin/cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc
         sudo sed -i 's|home/daniar:/bin/bash|home/daniar:/bin/zsh|g' /etc/passwd
@@ -980,7 +1303,7 @@ EOF
 
 
 2. Create XFS loop devices [[AFTER EACH REBOOT]]
-    # https://www.thegeekdiary.com/how-to-create-virtual-block-device-loop-device-filesystem-in-linux/
+    # https://www.thegeekdiary.com
     # If there is only 1 physical storage, you must create loop devices!
         # linux support block device called the loop device, which maps a normal file onto a virtual block device
 
@@ -1057,7 +1380,7 @@ EOF
             # "loop8" for log 
 
 2. Install Ceph 
-    # https://docs.ceph.com/en/mimic/start/quick-start-preflight/
+    # https://docs.ceph.com
 
     # dependencies
         # install subscription-manager
@@ -1074,18 +1397,19 @@ EOF
 cat <<EOF | sudo tee /etc/yum.repos.d/ceph.repo
 [ceph-noarch]
 name=Ceph noarch packages
-baseurl=https://download.ceph.com/rpm-luminous/el7/noarch
+baseurl=https://download.ceph.com
 enabled=1
 gpgcheck=1
 type=rpm-md
-gpgkey=https://download.ceph.com/keys/release.asc
+gpgkey=https://download.ceph.com
 EOF
 
     # Update your repository and install ceph-deploy:
         sudo yum -y install ceph-deploy
 
 3. Setup config 
-    
+    # https://docs.ceph.com
+
     # install ntp 
     sudo yum -y install ntp ntpdate ntp-doc
     sudo ntpdate 0.us.pool.ntp.org
@@ -1099,8 +1423,8 @@ EOF
 
     # set etc/hosts
     sudo bash -c "echo 10.140.82.40 node-1 >> /etc/hosts"
-    sudo bash -c "echo 10.140.82.255 node-2 >> /etc/hosts"
-    sudo bash -c "echo 10.140.83.222 node-3 >> /etc/hosts"
+    # sudo bash -c "echo 10.140.82.255 node-2 >> /etc/hosts"
+    # sudo bash -c "echo 10.140.83.222 node-3 >> /etc/hosts"
 
     # update ssh config
 cat <<EOF | sudo tee ~/.ssh/config
@@ -1113,7 +1437,6 @@ Host node-2
 Host node-3
    Hostname node-3
    User daniar
-
 EOF
 
     # disable firewall 
@@ -1126,37 +1449,46 @@ EOF
 
     # enable plugin-priorities
     sudo yum -y install yum-plugin-priorities 
-    --enablerepo=rhel-7-server-optional-rpms
+        # --enablerepo=rhel-7-server-optional-rpms
 
 
 4. Ceph Deploy [On-MASTER]
-    # https://ralph.blog.imixs.com/2020/02/28/howto-install-ceph-on-centos-7/
-    # https://www.linuxtechi.com/install-configure-ceph-cluster-centos-7/
+    # https://ralph.blog.imixs.com
+    # https://www.linuxtechi.com
 
     sudo mkdir -p /mnt/extra/ceph_cluster
     cd /mnt/extra/ceph_cluster
-    ceph-deploy new node-1 node-2 node-3        # be ready to type "yes"
+    # sudo ceph-deploy new node-1                        # be ready to type "yes"
+    sudo ceph-deploy new node-1 node-2 node-3        # be ready to type "yes"
         # ... Writing initial config to ceph.conf...
 
     # verify the Ceph configuration
         cat ceph.conf | grep mon_host
 
     # Patch [Run in EACH NODE]
-        # workaround: https://tracker.ceph.com/issues/12694
+        # workaround: https://tracker.ceph.com
         sudo mv /etc/yum.repos.d/ceph.repo /etc/yum.repos.d/ceph-deploy.repo
 
-        # https://www.netways.de/en/blog/2018/11/14/ceph-mimic-using-loop-devices-as-osd/
-        sudo sed -i "s|return TYPE == 'disk'|return TYPE == 'disk' or TYPE == 'loop' or TYPE == 'part'|g" /usr/lib/python2.7/site-packages/ceph_volume/util/disk.py
-        cat /usr/lib/python2.7/site-packages/ceph_volume/util/disk.py | grep "TYPE == 'loop'"
-
-    # Install Ceph 
+    # Install Ceph [in-SUDO]
 
         cd /mnt/extra/ceph_cluster
+        # ceph-deploy install --release luminous node-1 
         ceph-deploy install --release luminous node-1 node-2 node-3 
             # ceph version 12.2.13 (584a20eb0237c657dc0567da126be145106aa47e) luminous (stable)
 
+        # Patch [Run in EACH NODE]
+            # https://www.netways.de/en/blog/2018/11/14/ceph-mimic-using-loop-devices-as-osd/
+            sudo sed -i "s|return TYPE == 'disk'|return TYPE == 'disk' or TYPE == 'loop' or TYPE == 'part'|g" /usr/lib/python2.7/site-packages/ceph_volume/util/disk.py
+            cat /usr/lib/python2.7/site-packages/ceph_volume/util/disk.py | grep "TYPE == 'loop'"
+
         # Deploy the initial monitor(s) and gather the keys:
         ceph-deploy mon create-initial
+            # Monitor and OSD better not in the same node [https://documentation.suse.comstorage-bp-hwreq.html]
+                # Strongly recommended to have a cluster (>1 node) deployment!!
+            # failed if only deployed in single node: 
+                # [node-1][ERROR ] admin_socket: exception getting command descriptions: [Errno 2] No such file or directory
+                # [ceph_deploy.mon][ERROR ] Some monitors have still not reached quorum:
+                # [ceph_deploy.mon][ERROR ] node-1
 
         # copy the configuration file to all ceph nodes
         ceph-deploy admin node-1 node-2 node-3
@@ -1197,8 +1529,8 @@ EOF
     ceph-deploy osd create --data /dev/loop3 node-3
 
     # create pool 
-        # https://docs.ceph.com/en/latest/rados/operations/pools/
-        # https://computingforgeeks.com/create-a-pool-in-ceph-storage-cluster/
+        # https://docs.ceph.com
+        # https://computingforgeeks.com
             # replicated, not erasure
         sudo ceph osd pool create mypool 100 100 replicated
 
@@ -1222,9 +1554,9 @@ EOF
     sudo ceph health        # check after 30s, the cluster need time to check the clock skew
 
 6. Ceph Dashboard 
-    # https://ralph.blog.imixs.com/2020/02/28/howto-install-ceph-on-centos-7/
-    # Enable Dashboard: https://docs.ceph.com/en/quincy/mgr/dashboard/
-    # Works: https://stackoverflow.com/questions/55549420/
+    # https://ralph.blog.imixs.com
+    # Enable Dashboard: https://docs.ceph.com
+    # Works: https://stackoverflow.com
 
     cd /mnt/extra/ceph_cluster
     sudo ceph mgr module enable dashboard
@@ -1246,9 +1578,9 @@ EOF
 
 
 7. Start Rados Gateway (rgw)
-    # Just a sneak peek: https://www.youtube.com/watch?v=6uX23Q3y_SU
-    # https://access.redhat.com/documentation/en-us/red_hat_ceph_storage/3/html/installation_guide_for_red_hat_enterprise_linux/manually-installing-ceph-object-gateway
-    # https://docs.ceph.com/en/mimic/start/quick-ceph-deploy/
+    # Just a sneak peek: https://www.youtube.com
+    # https://access.redhat.cominstallation_guide_for_red_hat_enterprise_linux/manually-installing-ceph-object-gateway
+    # https://docs.ceph.com
 
     # install rgw daemon 
         sudo yum -y install ceph-radosgw
@@ -1298,7 +1630,7 @@ EOF
         sudo chown daniar /var/log/radosgw/
 
     # Start radosgw service
-        # https://tracker.ceph.com/issues/24265 => becareful with the @xxxx
+        # https://tracker.ceph.com
 
         sudo systemctl start ceph-radosgw@radosgw.node-1
         # sudo systemctl restart ceph-radosgw@radosgw.node-1
@@ -1311,7 +1643,7 @@ EOF
     # check status 
         curl node-1:8080
 
-            # <?xml version="1.0" encoding="UTF-8"?><ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Owner><ID>anonymous</ID><DisplayName></DisplayName></Owner><Buckets></Buckets></ListAllMyBucketsResult>%
+            # <?xml version="1.0" encoding="UTF-8"?><ListAllMyBucketsResult xmlns="http://s3.amazonaws.comdoc/2006-03-01/"><Owner><ID>anonymous</ID><DisplayName></DisplayName></Owner><Buckets></Buckets></ListAllMyBucketsResult>%
 
     # Port Forwarding [Run at LOCAL]
 
@@ -1319,7 +1651,7 @@ EOF
 
         # visit this at local: http://localhost:8888/
 
-            # <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+            # <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com
             #    <Owner>
             #        <ID>anonymous</ID>
             #        <DisplayName/>
@@ -1329,7 +1661,7 @@ EOF
 
 
 8. Prepare Credentials (S3 interface)
-    # https://access.redhat.com/documentation/en-us/red_hat_ceph_storage/1.2.3/html-single/ceph_object_gateway_for_centos_x86_64/index
+    # https://access.redhat.comceph_object_gateway_for_centos_x86_64/index
     
     # Create a radosgw user for S3 access
         sudo radosgw-admin user create --uid="testuser" --display-name="First User"
@@ -1409,12 +1741,13 @@ EOF
     # Change the "daniarherikurniawan" with your github username
     # Set passwordless github push/pull 
     cd /mnt/extra
-    git config --global user.email "ddhhkk2@gmail.com"
+    git config --global user.email "ddhhkk2@gmail.com
     git config --global user.name "daniarherikurniawan"
     git config --global credential.helper store         # store pass in ~/.git-credentials as plain text format.
 
     cd /mnt/extra 
-    git clone https://daniarherikurniawan@github.com/daniarherikurniawan/cortx-bench-extra.git
+    git clone https://daniarherikurniawan@github.com
+        # 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      # GITHUB_SECRET; Tell DANIAR if you get this!!!
     
     # Run clear cache loop  
     cd /mnt/extra/cortx-bench-extra/script  
@@ -1424,7 +1757,7 @@ EOF
 10. Benchmark Ceph using S3bench
     
     # Install s3bench
-        # https://github.com/markhpc/hsbench
+        # https://github.com
 
         sudo yum -y install jq
         sudo yum install -y go
@@ -1435,15 +1768,15 @@ EOF
             # GOPATH="/root/go"
 
         which go
-        sudo go install github.com/aws/aws-sdk-go@latest
+        sudo go install github.com
         sudo find / -type d -name 'aws-sdk-go'
-            # /root/go/pkg/mod/cache/download/github.com/aws/aws-sdk-go
+            # /root/go/pkg/mod/cache/download/github.com
 
         # Install hsbench
-            # https://medium.com/@sherlock297/go-get-installing-executables-with-go-get-in-module-mode-is-deprecated-de3a30439596
-        sudo go install github.com/markhpc/hsbench@latest 
+            # https://medium.com-is-deprecated-de3a30439596
+        sudo go install github.com
         sudo find / -name 'hsbench'
-            # /root/go/pkg/mod/cache/download/github.com/markhpc/hsbench
+            # /root/go/pkg/mod/cache/download/github.com
         
         sudo ls /root/go/bin
             # hsbench
@@ -1505,4 +1838,6 @@ EOF
             ./hsbench -a $access_key -s $secret_key -u http://$IP:$PORT  -z $size -t 1 -n 2000 -b 100 -d -1 -m cxipgdcx -ri 10 -j logs/hsbench-raw-$size.log
             cat logs/hsbench-raw-$size.log | jq | grep TOTAL -A 8 > logs/hsbench-$size.log
         done
+
+
 
