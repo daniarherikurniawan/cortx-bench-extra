@@ -598,7 +598,49 @@
     # Run the client 
         # Get the m0trace.* output "m0trace.392531.2022-07-26-17:21:51"
 
-1. Enable ADDB
+    # Create the loop device  [Run AFTER EACH REBOOT]
+        cd /mnt/extra/loop-files/
+        sudo losetup -fP loopbackfile1.img
+        sudo losetup -fP loopbackfile2.img
+        sudo losetup -fP loopbackfile3.img
+        sudo losetup -fP loopbackfile4.img
+        sudo losetup -fP loopbackfile5.img
+
+    # print loop devices  [Run AFTER EACH REBOOT]
+        losetup -a
+            # /dev/loop0: []: (/mnt/extra/loop-files/loopbackfile1.img)
+            # /dev/loop1: []: (/mnt/extra/loop-files/loopbackfile2.img)
+            # /dev/loop2: []: (/mnt/extra/loop-files/loopbackfile3.img)
+
+    # Format devices into filesystems  [Run AFTER EACH REBOOT]
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile1.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile2.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile3.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile4.img 
+        printf "y" | sudo mkfs.ext4 /mnt/extra/loop-files/loopbackfile5.img 
+        lsblk -f
+
+    # mount loop devices [Run AFTER EACH REBOOT]
+
+        mkdir -p /mnt/extra/loop-devs/loop0
+        mkdir -p /mnt/extra/loop-devs/loop1
+        mkdir -p /mnt/extra/loop-devs/loop2
+        mkdir -p /mnt/extra/loop-devs/loop3
+        mkdir -p /mnt/extra/loop-devs/loop4
+        cd /mnt/extra/loop-devs/
+        sudo mount -o loop /dev/loop0 /mnt/extra/loop-devs/loop0
+        sudo mount -o loop /dev/loop1 /mnt/extra/loop-devs/loop1
+        sudo mount -o loop /dev/loop2 /mnt/extra/loop-devs/loop2
+        sudo mount -o loop /dev/loop3 /mnt/extra/loop-devs/loop3
+        sudo mount -o loop /dev/loop4 /mnt/extra/loop-devs/loop4
+        lsblk -f
+        df -h 
+
+    # START Motr Cluster 
+        cd /mnt/extra; sudo hctl shutdown; sudo hctl bootstrap --mkfs CDF.yaml; hctl status
+
+
+1. Enable ADDB 
     # set configure motr to allow all logs (INFO) level 
     # recompile motr  
     # Put in the client.c: "motr_conf.mc_is_addb_init     = true;"     # Enable ADDB
@@ -606,117 +648,356 @@
     # restart hare cluster 
     # then run client and make sure you have the m0trace.* files 
 
-1. Prepare ADDB Trace  
+2. Run Client: example1_dan.c 
 
-    # Flatten out the m0trace raw file 
-        cd /mnt/extra/cortx-motr/utils/trace/
-        filename="m0trace.749269.2022-07-26-20:38:45"
-        sudo ./m0trace -i /mnt/extra/cortx-motr/motr/examples/$filename > $filename.log
-            
-            # sudo find / -name 'm0tracedump'
-            # sudo find / -name 'm0trace'
-            # Don't use: m0tracedump, m0kdump2trace, m0addb2dump, or m0traced! Got many errors 
-            
-            # sudo ./m0tracedump -i /mnt/extra/cortx-motr/motr/examples/$filename 
+    #!/usr/bin/env bash
+
+    cd /mnt/extra/cortx-motr/motr/examples
+    ./script/modify_param.py -file /mnt/extra/cortx-motr/motr/examples/example1_dan.c -params "N_REQUEST=200 BLOCK_SIZE=32768"
+    gcc -I/mnt/extra/cortx-motr -DM0_EXTERN=extern -DM0_INTERNAL= -Wno-attributes -L/mnt/extra/cortx-motr/motr/.libs -lmotr example1_dan.c -o example1_dan
+    ./example1_dan inet:tcp:10.52.0.167@22001 inet:tcp:10.52.0.167@22501 "<0x7000000000000001:0x0>" "<0x7200000000000001:0x3>" 12345670
+
+    # Make sure the addb is enabled ("motr_conf.mc_is_addb_init     = true")
+        # Output: 
+            addb_215065/
+            m0trace.215065.2022-08-10-17:14:13
+
+3. Process ADDB Trace  
+
+    # install dependencies 
+        pip3 install pandas 
+        pip3 install graphviz peewee 
+        pip3 install numpy tqdm plumbum graphviz
+        sudo yum install -y python-pydot python-pydot-ng graphviz
+
+        cd /mnt/extra/cortx-motr/motr/examples/
+        git clone --recursive https://github.com/Seagate/seagate-tools
+        ln -s seagate-tools/performance/PerfLine/roles/perfline_setup/files/chronometry chronometry
+            # the chronometry is now at "/mnt/extra/chronometry"
+
+    filename="m0trace.215065.2022-08-10-17:14:13"
     
-            # similar trace
-                # sudo ./m0tracedump -i /var/motr/m0d-0x7200000000000001:0x1/m0trace.733173.2022-07-26-20:29:41 > test.log
-                # sudo ./m0tracedump -i /mnt/extra/cortx-motr/motr/examples/m0trace.749269.2022-07-26-20:38:45 > test2.log
+    # Run "m0trace"
+        # Flatten out the m0trace raw file 
 
-    # check log at "cd /var/log/seagate"
-        # only find "hare/", no "motr/" ??!!! Motr is at /var/motr/
+        cd /mnt/extra/cortx-motr/motr/examples/
+        sudo /mnt/extra/cortx-motr/utils/trace/m0trace -i $filename > $filename.log
+          
+    # Run "m0tracedump"
+        # Get the dump file 
 
-    # try m0t1fs [No-NEED]
-        # sudo find / -name 'm0t1fs'
-            # /mnt/extra/cortx-motr/st/m0t1fs
-        # cd /mnt/extra/cortx-motr/
-        # sudo ./m0t1fs/linux_kernel/st/m0t1fs_test.sh
+        cd /mnt/extra/cortx-motr/motr/examples/
+        sudo /mnt/extra/cortx-motr/utils/m0tracedump -i m0trace.194241.2022-08-10-16:58:02 > $filename.dump
 
-2. Check ADDB Stobs 
-    # https://github.com
-    # the output are generated at /var/motr/
+    # Run "m0addb2dump"
+        # will generate stobs to be inserted to DB 
+        cd /mnt/extra/cortx-motr/motr/examples/
+        addb_folder="addb_215065"
+        sudo /mnt/extra/cortx-motr/utils/m0addb2dump -f --  `pwd`/$addb_folder/o/100000000000000\:2 >  $addb_folder.addb2dump
+            # output: addb_215065.addb2dump
+        
+    # Generate the DB object ("addb2db.py")
+        # use seagate-tools repo script to generate m0play.db
+        cd /mnt/extra/cortx-motr/motr/examples/
+        addb_folder="addb_215065"
+        python3 /mnt/extra/chronometry/addb2db.py --dumps $addb_folder.addb2dump --db seagate_tools_$addb_folder.db
+            # output: "seagate_tools_addb_215065.db" ==> The most IMPORTANT file
 
-    ls /var/motr/ | grep m0d
-        # m0d-0x7200000000000001:0x1
-        # m0d-0x7200000000000001:0x2
+        # Query the DB 
+            cd /mnt/extra/cortx-motr/motr/examples/
+            addb_folder="addb_215065"
+            python3 /mnt/extra/chronometry/req_timelines.py -d seagate_tools_$addb_folder.db -p 215065 1777 --output-file req_timelines_215065_1777.png
+
+                # Output: 
+                    # Process pid 215065, id 1777
+                    # 215065_1777 -> -5306630172570288004_184 (rpc_to_sxid);
+                    # -5306630172570288004_184 -> 215065_1778 (sxid_to_rpc);
+
+    # Open Sqlite Console 
+        cd /mnt/extra/cortx-motr/motr/examples/
+        addb_folder="addb_215065"
+        sqlite3 seagate_tools_$addb_folder.db
+
+        # List all tables 
+            .tables
+
+                # attr            host            relation        request         s3_request_uid
+
+                # SELECT * FROM request LIMIT 10;
+                # SELECT * FROM attr LIMIT 10;
+                # SELECT * FROM s3_request_uid LIMIT 10;    # EMPTY because we are not using S3 here 
+
+        # Get columns in a table 
+            # table name is "relation"
+
+            .schema relation
+            PRAGMA table_info(attr);
+                # |entity_id|pid|name|val|
+
+            PRAGMA table_info(host);
+                # |pid|hostname|
+
+            PRAGMA table_info(request);
+                # |time|pid|id|state|type_id|
+
+            PRAGMA table_info(s3_request_uid);
+                # |pid|id|uuid|
+
+            PRAGMA table_info(relation);
+                # |pid1|mid1|pid2|mid2|type_id|
+
+        # List all types of relation 
+
+            SELECT DISTINCT type_id FROM relation;
+                # sxid_to_rpc
+                # rpc_to_fom
+                # rpc_to_sxid
+                # client_to_ioo
+                # bulk_to_rpc
+                # ioo_to_rpc
+                # cob_to_rpc
+                # dix_to_cas
+                # cas_to_rpc
+                # client_to_cob
+
+            SELECT count(type_id) FROM relation WHERE type_id="sxid_to_rpc";
+                /* 2104 */
+            SELECT count(type_id) FROM relation WHERE type_id="rpc_to_fom";
+            SELECT count(type_id) FROM relation WHERE type_id="rpc_to_sxid";
+            SELECT count(type_id) FROM relation WHERE type_id="client_to_ioo";
+                /* 400 */
+            SELECT count(type_id) FROM relation WHERE type_id="bulk_to_rpc";
+                /* 400 */
+            SELECT count(type_id) FROM relation WHERE type_id="ioo_to_rpc";
+                /* 400 */
+            SELECT count(type_id) FROM relation WHERE type_id="cob_to_rpc";
+                /* 1600 */
+            SELECT count(type_id) FROM relation WHERE type_id="dix_to_cas";
+            SELECT count(type_id) FROM relation WHERE type_id="cas_to_rpc";
+            SELECT count(type_id) FROM relation WHERE type_id="client_to_cob";
+
+            # Find out more about sxid_to_rpc
+                SELECT * FROM relation WHERE type_id="sxid_to_rpc" LIMIT 10;
+
+                    # python3 /mnt/extra/chronometry/req_graph.py -d seagate_tools_$addb_folder.db -p 0 1
 
 
-        # at m0d-0x7200000000000001:0x1/
-            # addb-stobs-937576
-            # addb-stobs-938420
-            # m0trace.937576.2022-07-26-22:34:01
-            # m0trace.938420.2022-07-26-22:34:10
-        # at m0d-0x7200000000000001:0x2/
-            ....
+        SELECT * FROM relation LIMIT 10;
+                # 215065|6739|215065|6740|client_to_ioo
+                # 215065|6742|-5306630172570288004|1425|rpc_to_sxid
+                # 215065|6741|215065|6742|bulk_to_rpc
+                # 215065|6740|215065|6742|ioo_to_rpc
+                    # Note "6739" will give the best graph!!
+                    # it will have dependencies to another graphs!!
 
-    # Clearing old ADDB stubs [If-Needed]
-        # The m0d-0x7200000000000001:0x1/ and m0d-0x7200000000000001:0x2/ must be cleared after analyzing the client run 
-        # otherwise the folder-naming will not reflect the lastest running time
-        # although, the trace generated at /motr/examples are always up to date with the running time
+        SELECT * FROM relation where type_id="sxid_to_rpc" limit 10;
+        SELECT * FROM relation where type_id="sxid_to_rpc" limit 10;
 
-        rm -rf /var/motr/m0d-0x7200000000000001:0x1
-        rm -rf /var/motr/m0d-0x7200000000000001:0x2
-            # Then, rerun the client!
+                # 215065|0|215065|0|rpc_to_fom
+                # 215065|0|215065|0|rpc_to_fom
+                # 215065|0|215065|0|rpc_to_fom
 
-    # Dump addb samples
-        cd /mnt/extra/cortx-motr/utils/
-        sudo ./m0addb2dump -f -- /var/motr/m0d-0x7200000000000001\:0x1/addb-stobs/o/100000000000000\:2 >  dump_1.txt
+            # To quit, press: "Ctrl + D"
+
+    # Generate Flow Graphs
+        # https://www.youtube.com/watch?v=FFTi2XNFb7A
+        # https://cortxcommunity.slack.com/archives/C019S0SGWNQ/p1659592200692869
+
+        # sudo find / -name 'io_req.py'
+        # sudo find / -name 'req_graph.py'
+
+        cd /mnt/extra/cortx-motr/motr/examples/
+        addb_folder="addb_215065"
+        python3 /mnt/extra/chronometry/req_graph.py -d seagate_tools_$addb_folder.db -p 215065 0
+            # Process pid 215065, id 0
+            # 215065_0 -> 215065_0 (rpc_to_fom);
+
+                # output:
+                    # attr_graph_215065_0.png --> BUT this is empty
+
+        python3 /mnt/extra/chronometry/req_graph.py -d seagate_tools_$addb_folder.db -p 215065 1777
+                # attr_graph_215065_1777.png
+
+        # Find interesting pid to graph 
+            cd /mnt/extra/cortx-motr/motr/examples/
+            addb_folder="addb_215065"
+
+            # get all "cob_id"
+            cat $addb_folder.addb2dump | grep "cob_id" > cob_id.txt
+                # cat $addb_folder.addb2dump | grep "o--> initialised" | tail -n 10
+                
+                # get the list of id only put it in "cob.txt"
+
+                # get the most occurence
+                sed -e 's/\s/\n/g' < cob.txt | sort | uniq -c | sort -nr | head  -10        
+                   # 8 9030 
+                   # 8 8990
+                   # 8 8950 -> use this 
+
+                # graph the potential pid 
+                    # use pid - 1, because we want to capture the prior action as well  
+                    cd /mnt/extra/cortx-motr/motr/examples/
+                    addb_folder="addb_215065"
+                    python3 /mnt/extra/chronometry/req_graph.py -d seagate_tools_$addb_folder.db -p 215065 8949
+
+    # Generate Timeline Diagram  
+        cd /mnt/extra/cortx-motr/motr/examples/
+        addb_folder="addb_215065"
+        python3 /mnt/extra/chronometry/req_timelines.py -d seagate_tools_$addb_folder.db -p 215065 8949 --output-file req_timelines_215065_8949.png
+            # output at req_timelines.png
+
+    # Generate Histogram 
+        cd /mnt/extra/cortx-motr/motr/examples/
+        addb_folder="addb_215065"
+        python3 /mnt/extra/chronometry/hist.py --db seagate_tools_$addb_folder.db   -t REQ_QUERY 1
 
 
+    # Try running "queues.py"
+        # based on /mnt/extra/chronometry
+        cd /mnt/extra/cortx-motr/motr/examples/
+        addb_folder="addb_215065"
+        python3 /mnt/extra/chronometry/queues.py -d seagate_tools_$addb_folder.db
 
+        # ERROR:
+            # require "s3_request_state" table 
 
-
-"
-"
-TODO:
-    - How come m0t1fs_test.sh can generate stobs????
-        - What config that I missed??
-        /mnt/extra/cortx-motr/m0t1fs/linux_kernel/st/m0t1fs_test.sh
-
-    - Run CORTX-k8 and try to get stobs or get the m0trace !!
-
-
-
-
-
-
-
-    # dump addb samples
-    ./motr/utils/m0addb2dump -f -- /var/motr/m0d-0x7200000000000001\:0xc/addb-stobs/o/100000000000000\:2 >  dump_c.txt
-    ./motr/utils/m0addb2dump -f -- /var/motr/m0d-0x7200000000000001\:0x1a/addb-stobs/o/100000000000000\:2 > dump_1a.txt
-    ./motr/utils/m0addb2dump -f -- /var/motr/m0d-0x7200000000000001\:0x28/addb-stobs/o/100000000000000\:2 > dump_28.txt
-    ./motr/utils/m0addb2dump -f -- /var/motr/m0d-0x7200000000000001\:0x9/addb-stobs/o/100000000000000\:2 >  dump_9.txt
-    ./motr/utils/m0addb2dump -f -- client_addb_17730/o/100000000000000:2 > dumpc_26568.txt
-
-    # generate the db
-    git clone --recursive git@github.com
-    ln -s seagate-tools/performance/PerfLine/roles/perfline_setup/files/chronometry_v2 chronometry_v2
-    cp dump[cs]*.txt chronometry_v2 && cd chronometry_v2
-    python3 addb2db.py --dumps dump[cs]_*.txt --db m0play.db.a2a
-
-    # look at request diagrams
-    python3 req_timelines.py -d m0play.db.a2a -p 26568 1777
-
-
-
-
-
-2. Put inside DB 
+4. Download all the files/traces [Run at LOCAL]
     
-    m0play.db 
-    /mnt/extra/cortx-motr/scripts/addb-py/chronometry/addb2db.py
-
-    Chronometry 
-
-
+    log_dir="addb-examples-v0"
+    mkdir -p ~/Documents/_CORTX/$log_dir
+    rsync -Pav daniar@129.114.108.103:/mnt/extra/cortx-motr/motr/examples ~/Documents/_CORTX/$log_dir
+    # scp -rp daniar@129.114.108.103:/mnt/extra/cortx-motr/motr/examples ~/Documents/_CORTX/$log_dir
 
 
+5. Generate the DB object using Motr tools [No-NEED]
+    # Use the Motr tools
+        # sudo find / -name 'addb2db.py'
+        cd /mnt/extra/cortx-motr/motr/examples/
+        addb_folder="addb_215065"
+        python3 /mnt/extra/cortx-motr/scripts/addb-py/chronometry/addb2db.py --dumps $addb_folder.addb2dump --db motr_tools_$addb_folder.db
 
 
+    # Open Sqlite Console 
+        cd /mnt/extra/cortx-motr/motr/examples/
+        addb_folder="addb_215065"
+        sqlite3 motr_tools_$addb_folder.db
+
+        # List all tables 
+            echo ".table" | sqlite3 motr_tools_$addb_folder.db 
+                # attr                  cob_to_rpc            queues
+                # be_tx                 dix_req               rpc_req
+                # bulk_to_rpc           dix_to_cas            rpc_to_sxid
+                # cas_fom_to_crow_fom   dix_to_mdix           s3_measurement
+                # cas_req               fom_desc              s3_request_state
+                # cas_to_rpc            fom_req               s3_request_to_client
+                # client_req            fom_req_state         s3_request_uid
+                # client_to_cob         fom_to_stio           stio_req
+                # client_to_dix         fom_to_tx             sxid_to_rpc
+                # client_to_ioo         ioo_req               tx_to_gr
+                # cob_req               ioo_to_rpc
+
+            for table in `echo ".table" | sqlite3 motr_tools_$addb_folder.db`; do
+                
+                echo "$table \t" `echo "SELECT count(*) FROM $table;" | sqlite3 motr_tools_$addb_folder.db`
+            done
+
+                # attr     9197
+                # cob_to_rpc   1600
+                # queues   687
+                # dix_req      4
+                # rpc_req      11981
+                # bulk_to_rpc      400
+                # dix_to_cas   1
+                # rpc_to_sxid      2073
+                # cas_req      3
+                # fom_desc     40
+                # cas_to_rpc   1
+                # fom_req      142
+                # client_req   5600
+                # fom_req_state    372
+                # client_to_cob    1000
+                # sxid_to_rpc      2104
+                # client_to_ioo    400
+                # ioo_req      1600
+                # cob_req      3000
+                # ioo_to_rpc   400
 
 
+6. Using Graph script inside Motr Tools
+    # at /mnt/extra/cortx-motr/scripts/addb-py/chronometry
+
+    # Generate Timeline graph ("io_req.py")
+
+        # https://youtu.be/FFTi2XNFb7A?t=1670
+            cd /mnt/extra/cortx-motr/motr/examples/
+            addb_folder="addb_215065"
+
+            echo "SELECT DISTINCT type_id FROM relation;" | sqlite3 seagate_tools_$addb_folder.db 
+            echo ".table" | sqlite3 seagate_tools_$addb_folder.db 
+
+            python3 /mnt/extra/cortx-motr/scripts/addb-py/chronometry/io_req.py -d seagate_tools_$addb_folder.db -p 215065 8949
+
+        # Error:
+            # can't possibly run this because I don't have table "peewee.OperationalError: no such table: client_to_ioo"
+            # Perhaps that table can be generated if we use S3 or RGW client 
 
 
+    # Generate Timeline graph ("fom_req.py")
+
+            # list all tables 
+            echo ".table" | sqlite3 seagate_tools_$addb_folder.db 
+                # attr            host            relation        request         s3_request_uid
+
+            cd /mnt/extra/cortx-motr/motr/examples/
+            addb_folder="addb_215065"
+            python3 /mnt/extra/cortx-motr/scripts/addb-py/chronometry/fom_req.py -d seagate_tools_$addb_folder.db -p 215065 -f 3
+
+        # Error:
+            # "peewee.OperationalError: no such table: fom_desc"
+            # can't possibly run fom_timeline.py as well 
+
+
+    # Possible graph scripts 
+        # It's impossible to run for now, because we don't have the required tables!
+
+        # at /mnt/extra/cortx-motr/scripts/addb-py/chronometry
+            hist__client_req.py
+            hist__fom_req.py
+            hist__fom_req_r.py
+            hist__fom_to_rpc.py
+            hist__ioo_req.py
+            hist.py
+            hist__s3req.py
+            hist__srpc_to_crpc.py
+            hist__stio_req.py
+            ios-hist.sh
+
+
+    # Attempting to run "hist__srpc_to_crpc.py"
+
+        SELECT * FROM relation WHERE type_id="rpc_to_sxid" LIMIT 10;
+        SELECT * FROM relation WHERE type_id="sxid_to_rpc" LIMIT 10;
+            # 0|-1|215065|23|sxid_to_rpc
+            # 0|1|215065|30|sxid_to_rpc
+            # 0|2|215065|35|sxid_to_rpc
+            # What is the meaning of these columns?????
+
+        # I believe we should have "rpc_to_sxid" and "sxid_to_rpc" table!!
+            # those tables will be based on "relation" table
+
+        # the script contains: 
+            SELECT (crq.time-srq.time), crq.state, srq.state
+
+            FROM rpc_to_sxid
+            JOIN sxid_to_rpc on rpc_to_sxid.xid=sxid_to_rpc.xid AND rpc_to_sxid.session_id=sxid_to_rpc.session_id
+            JOIN rpc_req crq on rpc_to_sxid.id=crq.id AND rpc_to_sxid.pid=crq.pid
+            JOIN rpc_req srq on sxid_to_rpc.id=srq.id AND sxid_to_rpc.pid=srq.pid
+
+            # I believe the field/columns of table "rpc_to_sxid" and "sxid_to_rpc" should be defined somewhere!!!
+                # otherwise, nothing we can do with the current data 
+
+    # More issues
+        # We don't have "request-browser.sh", Anatoliy has it when we present here: https://www.youtube.com/watch?v=FFTi2XNFb7A
 
 
 
