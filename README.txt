@@ -2118,5 +2118,198 @@ EOF
             cat logs/hsbench-raw-$size.log | jq | grep TOTAL -A 8 > logs/hsbench-$size.log
         done
 
+11. Setup Librados Client [In SUDO]
+	sudo yum install python-rados
 
+    # Using client.admin user
+    # Assuming the client.admin keyring is inside /mnt/extra/ceph_cluster
+    # Assuming mon_host is already set inside ceph.conf
+    # Check whether both keyring and mon_host is set inside ceph configuration file
+	    cat ceph.conf
+        # Look for:
+            # mon_host = ...
+            # keyring = ...
+        # If not there,
+            # If the keyring isn't at /mnt/extra/ceph_cluster
+            # Getting the location of keyring, should be inside ceph_cluster
+                cd /mnt/extra/ceph_cluster
+                ls
+            # If mon_host hasn't been set yet
+            # Getting the monitor's ip
+                ceph mon stat
 
+            nano ceph.conf
+            # copy:
+                # mon_host = 10.52.3.162,10.52.3.73
+                # keyring = /mnt/extra/ceph_cluster/ceph.client.admin.keyring
+    
+    # Create new python script
+        nano ceph-client.py
+        # paste code
+
+    # Alternatively, run the python script pulled from cortx-bench-extra repo
+        cd /mnt/extra/cortx-bench-extra/librados-clients/
+
+    # Run the script
+        python2 ceph-client.py
+
+12. Benchmark Ceph (Librados)
+    # Benchmark with RADOS BENCH
+        # Ref: https://access.redhat.com/documentation/en-us/red_hat_ceph_storage/1.3/html/administration_guide/benchmarking_performance, 
+        #      https://www.sebastien-han.fr/blog/2012/08/26/ceph-benchmarks/
+        # If error : HEALTH_WARN Degraded data redundancy: ..., run
+            # ceph tell mon.\* injectargs '--mon-allow-pool-delete=true'
+            # ceph osd pool delete testbench testbench --yes-i-really-really-mean-it
+
+        # Create new storage pool
+            ceph osd pool create testbench 100 100
+
+        # Drop FS Cache
+            sudo echo 3 | sudo tee /proc/sys/vm/drop_caches && sudo sync
+
+        # Benchmarking Write (100s)
+            # -p : pool name
+            # 100 : time in seconds
+            # -t : number of threads
+            # -b : block size (only for write)
+
+            blockSizeArr=("4K" "8K" "16K" "32K" "64K" "128K" "256K" "512K" )
+            for size in "${blockSizeArr[@]}"
+            do
+                echo 3 | sudo tee /proc/sys/vm/drop_caches && sudo sync
+                echo "$size"
+                rados bench -p testbench 100 write -t 1 -b $size
+            done
+
+        # Generate data
+            rados bench -p testbench 10 write --no-cleanup
+
+        # Benchmarking Read
+            rados bench -p testbench 50 rand -t 1
+
+    # Benchmark with Bonnie++
+        # Ref: https://www.jamescoyle.net/how-to/599-benchmark-disk-io-with-dd-and-bonnie
+        #      https://www.sebastien-han.fr/blog/2012/08/26/ceph-benchmarks/
+
+        # Install bonnie++
+        sudo yum -y install bonnie++
+
+        sudo su
+        cd /mnt/extra/ceph_cluster
+        free -m
+        #                total        used        free      shared  buff/cache   available
+        # Mem:         191796        3125      115166          34       73503      187901
+        # Here we have 191796 MB
+        # For minimizing inaccuracy due to OS caching, filesize (-s) should be minimum 2x of total mem
+        # So filesize has to be minimum 383592 MB
+        # A problem since:
+        # 1. Has to be power of 2
+        # 2. We have to do 4MB, 8MB, dst
+            # Limit the size
+                # Ex: bonnie++ -d /opt/ -r A -s B -n 1 -f -b -u root
+                # Limit RAM to A, bench size B
+
+        sudo echo 3 | sudo tee /proc/sys/vm/drop_caches && sudo sync
+        bonnie++ -d /mnt/extra/ -r 2K -s 4K -n 1 -f -b -u root -m Bonnie4 -x 5000
+
+        blockSizeArr=("4K" "8K" "16K" "32K" "64K" "128K" "256K" "512K" )
+        val=1
+        for size in "${blockSizeArr[@]}"
+        do
+            echo 3 | sudo tee /proc/sys/vm/drop_caches && sudo sync
+            val=$(($val*2))
+            valtemp="$val""K"
+            echo "RAM $valtemp & BENCHFILE $size"
+            bonnie++ -d /mnt/extra/ -r $valtemp -s $size -n 1 -f -b -u root -m Bonnie$size
+        done
+    
+    # Benchmark using Python Code
+        cd /mnt/extra/cortx-bench-extra/librados-clients/
+        python3 ceph-client-bench.py
+
+13. Setup RADOS Block Device (RBD)
+    # Using client.admin user
+    # Ref: https://www.bookstack.cn/read/ceph-en/855793c9b7b2e403.md
+    sudo su
+    cd /mnt/extra/ceph_cluster
+
+    # To free up OSDs, delete previous pool
+    ceph osd pool delete rbdpool rbdpool --yes-i-really-really-mean-it
+
+    # The pool 'mypool' already registered with rgw, so make another pool
+    sudo ceph osd pool create rbdpool 100 100 replicated
+    sudo modprobe rbd
+    rbd pool init rbdpool
+
+    # Create Block Device Image
+    rbd create rbdimage --size 1024 --pool rbdpool --image-feature layering
+    # Use client.admin user. To use another user, replace parameter --name
+    sudo rbd map rbdimage --pool rbdpool --name client.admin
+
+    sudo mkfs.ext4 -m0 /dev/rbd/rbdpool/rbdimage
+    sudo mkdir /mnt/extra/ceph-block-device
+    sudo mount /dev/rbd/rbdpool/rbdimage /mnt/extra/ceph-block-device
+    cd /mnt/extra/ceph-block-device
+
+14. Benchmark Ceph (RBD)
+    # Benchmark using RBD BENCH
+        # Using rbd bench-write [DEPRECATED - NOT USED]
+            # blockSizeArr=("4K" "8K" "16K" "32K" "64K" "128K" "256K" "512K" )
+            # for size in "${blockSizeArr[@]}"
+            # do
+            #     echo 3 | sudo tee /proc/sys/vm/drop_caches && sudo sync
+            #     echo "$size"
+            #     rbd bench-write rbdimage --pool=rbdpool --io-size $size --io-threads 1 --io-total 4G
+            # done
+
+        # https://docs.ceph.com/en/quincy/man/8/rbd/
+        # bench –io-type <read | write | readwrite | rw> [–io-size size-in-B/K/M/G/T] [–io-threads num-ios-in-flight] [–io-total size-in-B/K/M/G/T] [–io-pattern seq | rand] [–rw-mix-read read proportion in readwrite] image-spec
+        # Generate a series of IOs to the image and measure the IO throughput and latency. If no suffix is given, unit B is assumed for both –io-size and –io-total. Defaults are: –io-size 4096, –io-threads 16, –io-total 1G, –io-pattern seq, –rw-mix-read 50.
+
+        # For sequential, write
+        blockSizeArr=("4K" "8K" "16K" "32K" "64K" "128K" "256K" "512K" )
+        for size in "${blockSizeArr[@]}"
+        do
+            echo 3 | sudo tee /proc/sys/vm/drop_caches && sudo sync
+            echo "$size"
+            rbd bench --io-type write rbdimage --pool=rbdpool --io-size $size --io-threads 1 --io-total 4G --io-pattern seq
+        done
+
+        # For random, write
+        blockSizeArr=("4K" "8K" "16K" "32K" "64K" "128K" "256K" "512K" )
+        for size in "${blockSizeArr[@]}"
+        do
+            echo 3 | sudo tee /proc/sys/vm/drop_caches && sudo sync
+            echo "$size"
+            rbd bench --io-type write rbdimage --pool=rbdpool --io-size $size --io-threads 1 --io-total 4G --io-pattern rand
+        done
+
+        # For sequential, read
+        blockSizeArr=("4K" "8K" "16K" "32K" "64K" "128K" "256K" "512K" )
+        for size in "${blockSizeArr[@]}"
+        do
+            echo 3 | sudo tee /proc/sys/vm/drop_caches && sudo sync
+            echo "$size"
+            rbd bench --io-type read rbdimage --pool=rbdpool --io-size $size --io-threads 1 --io-total 4G --io-pattern seq
+        done
+
+        # For random, read
+        blockSizeArr=("4K" "8K" "16K" "32K" "64K" "128K" "256K" "512K" )
+        for size in "${blockSizeArr[@]}"
+        do
+            echo 3 | sudo tee /proc/sys/vm/drop_caches && sudo sync
+            echo "$size"
+            rbd bench --io-type read rbdimage --pool=rbdpool --io-size $size --io-threads 1 --io-total 4G --io-pattern rand
+        done
+
+    # Benchmark using Bonnie++
+        blockSizeArr=("4K" "8K" "16K" "32K" "64K" "128K" "256K" "512K" )
+        val=1
+        for size in "${blockSizeArr[@]}"
+        do
+            echo 3 | sudo tee /proc/sys/vm/drop_caches && sudo sync
+            val=$(($val*2))
+            valtemp="$val""K"
+            echo "RAM $valtemp & BENCHFILE $size"
+            bonnie++ -d /mnt/extra/ -r $valtemp -s $size -n 1 -f -b -u root:root -m BonnieRBD$size
+        done
