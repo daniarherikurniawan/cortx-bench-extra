@@ -2121,6 +2121,7 @@ EOF
 11. Setup Librados Client [In SUDO]
     # Python version
 	sudo yum install python-rados
+    sudo yum install python3-rados
 
     # Using client.admin user
     # Assuming the client.admin keyring is inside /mnt/extra/ceph_cluster
@@ -2153,17 +2154,6 @@ EOF
 
     # Run the script
         python2 ceph-client.py
-    
-    # C++ version
-    sudo yum install librados2-devel
-
-    # Use the same pre-check as python VERSION
-    # Compile the c++ file
-    g++ -std=c++11 -g -c ceph-client.cpp -o ceph-client.o
-    g++ -std=c++11 -g ceph-client.o -lrados -o ceph-client
-
-    # Run the binary file
-    sudo ./ceph-client >> test.log
 
 12. Benchmark Ceph (Librados)
     # Benchmark with RADOS BENCH
@@ -2238,6 +2228,17 @@ EOF
     # Benchmark using Python Code
         cd /mnt/extra/cortx-bench-extra/librados-clients/
         python3 ceph-client-bench.py
+
+    # C++ version
+        sudo yum install librados2-devel
+
+    # Use the same pre-check as python VERSION
+    # Compile the c++ file
+        g++ -std=c++11 -g -c ceph-client.cpp -o ceph-client.o
+        g++ -std=c++11 -g ceph-client.o -lrados -o ceph-client
+
+    # Run the binary file
+        sudo ./ceph-client >> test.log
 
 13. Setup RADOS Block Device (RBD)
     # Using client.admin user
